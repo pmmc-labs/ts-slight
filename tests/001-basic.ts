@@ -1,6 +1,6 @@
 // -----------------------------------------------------------------------------
 
-type TERM     = LIST | Sym | LITERAL | Bind | Env | CALLABLE | ERRO
+type TERM     = LIST | Sym | LITERAL | Bind | Env | CALLABLE | ERROR
 type LITERAL  = Bool | Str | Num
 type LIST     = Cons | Nil
 type ENV      = Env  | Nil
@@ -19,7 +19,7 @@ type ERROR    = { type : 'ERROR', error : any }
 type Bind     = { type : 'BIND', name : Sym, value : TERM }
 type Env      = { type : 'ENV', first : Bind, rest: ENV }
 
-type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
+type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : ENV }
 type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
 // -----------------------------------------------------------------------------
@@ -72,7 +72,7 @@ function bool (value : boolean) : Bool { return { type : 'BOOL', value } }
 
 function sym (ident : string) : Sym { return { type : 'SYM', ident } }
 
-function lambda (params : LIST, body : TERM, env : Env) : Lambda {
+function lambda (params : LIST, body : TERM, env : ENV) : Lambda {
     return { type : 'LAMBDA', params, body, env }
 }
 
@@ -102,6 +102,18 @@ function lookup (name : Sym, env : ENV) : TERM {
         env = env.rest;
     }
     return nil
+}
+
+function bindParams (params : LIST, args : LIST, env : ENV) : ENV | ERROR {
+    while (!isNil(params)) {
+        if (isNil(args))          return raise(`ARITY MISMATCH! missing ${pprint(params)} parameter`);
+        if (!isSym(params.first)) return raise(`Expected parameter to be a symbol, wtf!`);
+        env = bind( params.first, args.first, env );
+        params = params.rest;
+        args   = args.rest;
+    }
+    if (!isNil(args)) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
+    return env;
 }
 
 // ...
@@ -144,6 +156,63 @@ function pprint (t : TERM) : string {
     case isError(t)   : return `E!${String(t.error)}`
     default : throw new Error(`WTF IS ${String(t)}`);
     }
+}
+
+// -----------------------------------------------------------------------------
+// adapted from - https://gist.github.com/tluyben/0f9877bbe657d5f49122357f4a99d5c8
+
+function parse (source : string) : TERM[] {
+    const lexer = /"[^"]*"|\(|\)|[^\s()]+/g;
+    const ts = source.match(lexer)!;
+    let i = 0
+    const rec = () => {
+        let prg : any = undefined;
+        while (i < ts.length) {
+            let t = ts[i]!;
+            if (t === '(') {
+                if (prg === undefined) {
+                    prg = [];
+                } else {
+                    prg.push(rec())
+                }
+            } else if (t === ')') {
+                break;
+            } else {
+                switch (t) {
+                case '#true':
+                    prg.push(bool(true));
+                    break;
+                case '#false':
+                    prg.push(bool(false));
+                    break;
+                default:
+                    if (!isNaN(parseInt(t))) {
+                        prg.push(num(parseInt(t)))
+                    }
+                    else if (!isNaN(parseFloat(t))) {
+                        prg.push(num(parseFloat(t)))
+                    }
+                    else if (t.startsWith('"')) {
+                        prg.push(str(t))
+                    }
+                    else {
+                        prg.push(sym(t))
+                    }
+                }
+            }
+            i++
+        }
+        //console.log(prg);
+        return list( ...prg )
+    }
+
+    let terms : TERM[] = [];
+    while (i < ts.length) {
+        //console.log('...', ts.slice(i));
+        terms.push(rec());
+        i++;
+    }
+    return terms;
 }
 
 // -----------------------------------------------------------------------------
@@ -197,6 +266,15 @@ function liftNumBinOp (name : string, f : (n : number, m : number) => number) : 
     })
 }
 
+function liftNumBoolOp (name : string, f : (n : number, m : number) => boolean) : Builtin {
+    return liftBinOp(name, (n : TERM, m : TERM) : Bool | ERROR => {
+        if (isNum(n) && isNum(m)) {
+            return bool(f( n.value, m.value ));
+        } else {
+            return raise(`Must be numbers, duh!`);
+        }
+    })
+}
 
 // -----------------------------------------------------------------------------
 
@@ -208,6 +286,13 @@ function initalizeEnv () : ENV {
     env = bind( sym('/'), liftNumBinOp('/', (n, m) => n / m), env );
     env = bind( sym('%'), liftNumBinOp('%', (n, m) => n % m), env );
 
+    env = bind( sym('=='), liftNumBoolOp('==', (n, m) => n == m), env );
+    env = bind( sym('!='), liftNumBoolOp('!=', (n, m) => n == m), env );
+    env = bind( sym('<='), liftNumBoolOp('<=', (n, m) => n <= m), env );
+    env = bind( sym('<'),  liftNumBoolOp('<',  (n, m) => n <  m), env );
+    env = bind( sym('>='), liftNumBoolOp('>=', (n, m) => n >= m), env );
+    env = bind( sym('>'),  liftNumBoolOp('>',  (n, m) => n >  m), env );
+
     env = bind( sym('eq?'), liftBinOp('eq?', (n, m) => bool(eq(n, m))),  env );
     env = bind( sym('ne?'), liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
 
@@ -216,11 +301,327 @@ function initalizeEnv () : ENV {
     return env;
 }
 
+// -----------------------------------------------------------------------------
 
-import { parse } from "sexpr-plus"
+type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM,                env : ENV, kont : Kontinue }
+type EvalHead  = { type : 'EVAL_HEAD', args : LIST,                env : ENV, kont : Kontinue }
+type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[], env : ENV, kont : Kontinue }
+type Apply     = { type : 'APPLY',     call : CALLABLE,            env : ENV, kont : Kontinue }
+type Drop      = { type : 'DROP', env : ENV, kont : Kontinue }
+type Return    = { type : 'RETURN', value : TERM, env : ENV, kont : Kontinue }
+type Define    = { type : 'DEFINE', name : Sym, value : TERM, env : ENV, kont : Kontinue }
+type Cond      = { type : 'COND', if_true : TERM, if_false : TERM, env : ENV, kont : Kontinue }
+type ScopeExit = { type : 'SCOPE_EXIT', env : ENV, kont : Kontinue }
+type Halt      = { type : 'HALT', results : TERM[] }
+type Err       = { type : 'ERR',  error : ERROR }
+
+type Kontinue =
+    | EvalExpr
+    | EvalHead
+    | EvalArgs
+    | Apply
+    | Drop
+    | Return
+    | Halt
+    | Err
+    | Define
+    | Cond
+    | ScopeExit
+
+function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
+    let stepsStr = steps.toString().padStart(5, '0');
+    let kontStr  = kont.type.padEnd(11, " ");
+    switch (kont.type) {
+    case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`; break;
+    case 'EVAL_HEAD'  : kontStr += ` ${pprint(kont.args)}`; break;
+    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
+    case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`; break;
+    case 'DROP'       : break;
+    case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
+    case 'DEFINE'     : break;
+    case 'COND'       : break;
+    case 'SCOPE_EXIT' : break;
+    case 'HALT'       : break;
+    case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
+    }
+    return `${stepsStr} | ${kontStr.padEnd(50, ' ')} := ${stack.map(pprint).join(', ')}`
+}
 
 
+let steps = 0;
 
+function run (exprs : TERM[], env : ENV) : TERM {
+    let to_run = [];
+    let to_fix = [];
+    for (const expr of exprs) {
+        if (isCons(expr)) {
+            let head = car(expr);
+            if (isSym(head) && head.ident === 'defun') {
+                let [ name, params, body ] = uncons(cdr(expr));
+                if (name   === undefined) throw new Error(`defun <name> ... duh!`);
+                if (params === undefined) throw new Error(`defun <name> <params> ... duh!`);
+                if (body   === undefined) throw new Error(`defun <name> <params> <body>... duh!`);
+                if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
+                if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
+                env = bind( name, lambda( params, body, env ), env );
+                to_fix.push(env.first);
+            } else {
+                to_run.push(expr);
+            }
+        } else {
+            to_run.push(expr);
+        }
+    }
+
+    to_fix.forEach((b) => { (b.value as Lambda).env = env })
+
+    return step(to_run, env);
+}
+
+function step (exprs : TERM[], env : ENV) : TERM {
+    if (exprs.length == 0) return nil;
+
+    let kont : Kontinue = {
+        type : 'EVAL_EXPR',
+        expr : exprs.pop()!,
+        env  : env,
+        kont : { type : 'HALT', results : [] }
+    };
+
+    while (exprs.length > 0) {
+        kont = {
+            type : 'EVAL_EXPR',
+            expr : exprs.pop()!,
+            env  : env,
+            kont : {
+                type : 'DROP',
+                env  : env,
+                kont : kont,
+            }
+        }
+    }
+
+    while (steps < 100_000) {
+        kont = kontinue(kont);
+        if (kont.type == 'HALT') break;
+        if (kont.type == 'ERR') {
+            throw new Error(pprint(kont.error))
+        }
+    }
+
+    if (kont.type != 'HALT') {
+        throw new Error(`Expected HALT, but somehow did not`);
+    }
+
+    return kont.results.pop()!;
+}
+
+function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
+    steps++;
+    console.log(pprintKont(steps, kont, stack))
+    switch (kont.type) {
+    case 'EVAL_EXPR':
+        switch (true) {
+        case isCons(kont.expr):
+            let head = car(kont.expr);
+            let tail = cdr(kont.expr);
+            if (isSym(head) && isCons(tail)) {
+                switch (head.ident) {
+                case 'if' :
+                    let [ cond, if_true, if_false ] = uncons(tail);
+                    if (cond     == undefined) return { type : 'ERR', error : raise(`Expected conf for COND, got undefined`) };
+                    if (if_true  == undefined) return { type : 'ERR', error : raise(`Expected if-true for COND, got undefined`) };
+                    if (if_false == undefined) return { type : 'ERR', error : raise(`Expected if-false for COND, got undefined`) };
+                    return {
+                        type : 'EVAL_EXPR',
+                        expr : cond,
+                        env  : kont.env,
+                        kont : {
+                            type : 'COND',
+                            if_true,
+                            if_false,
+                            env  : kont.env,
+                            kont : kont.kont
+                        }
+                    }
+                case 'do' :
+                    let exprs = uncons(tail);
+                    let next : Kontinue = {
+                        type : 'EVAL_EXPR',
+                        expr : exprs.pop()!,
+                        env  : kont.env,
+                        kont : kont.kont
+                    };
+                    while (exprs.length > 0) {
+                        next = {
+                            type : 'EVAL_EXPR',
+                            expr : exprs.pop()!,
+                            env  : kont.env,
+                            kont : {
+                                type : 'DROP',
+                                env  : kont.env,
+                                kont : next,
+                            }
+                        }
+                    }
+                    return next;
+                case 'lambda' :
+                    let params = car(tail);
+                    let body   = cadr(tail);
+                    if (!isList(params)) {
+                        return { type : 'ERR', error : raise(`Params should be a list, not ${pprint(params)} in lambda`) }
+                    }
+                    return {
+                        type  : 'RETURN',
+                        value : lambda( params, body, kont.env ),
+                        env   : kont.env,
+                        kont  : kont.kont
+                    }
+                }
+            }
+            return {
+                type : 'EVAL_EXPR',
+                expr : head,
+                env  : kont.env,
+                kont : {
+                    type : 'EVAL_HEAD',
+                    args : tail,
+                    env  : kont.env,
+                    kont : kont.kont
+                }
+            }
+        case isSym(kont.expr):
+            let found = lookup(kont.expr, kont.env);
+            if (isNil(found)) {
+                return { type : 'ERR', error : raise(`Could not find ${pprint(kont.expr)} in Env`) }
+            } else {
+                return { type : 'RETURN', value : found, env : kont.env, kont : kont.kont };
+            }
+        default :
+            return { type : 'RETURN', value : kont.expr, env : kont.env, kont : kont.kont };
+        }
+    case 'EVAL_HEAD':
+        let call = stack.pop();
+        if (call == undefined) {
+            return { type : 'ERR', error : raise(`Expected call returned to EVAL_HEAD, got undefined`) }
+        }
+
+        if (!isCallable(call)) {
+            return { type : 'ERR', error : raise(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`) }
+        }
+
+        return {
+            type : 'EVAL_ARGS',
+            args : kont.args,
+            done : [],
+            env  : kont.env,
+            kont : {
+                type : 'APPLY',
+                call : call,
+                env  : kont.env,
+                kont : kont.kont
+            }
+        }
+    case 'EVAL_ARGS':
+        let done = kont.done;
+        if (stack.length > 0) {
+            let next_arg = stack.pop();
+            if (next_arg == undefined) {
+                return { type : 'ERR', error : raise(`Expected next_arg returned to EVAL_ARGS, got undefined`) }
+            }
+            done.push(next_arg);
+        }
+
+        if (isNil(kont.args)) {
+            return { type : 'RETURN', value : list( ...done ), env : kont.env, kont : kont.kont }
+        }
+        return {
+            type : 'EVAL_EXPR',
+            expr : car(kont.args),
+            env  : kont.env,
+            kont : {
+                type  : 'EVAL_ARGS',
+                args  : cdr(kont.args),
+                done  : done,
+                env   : kont.env,
+                kont  : kont.kont,
+            }
+        }
+    case 'APPLY':
+        let args = stack.pop();
+        if (args == undefined) {
+            return { type : 'ERR', error : raise(`Expected args returned to APPLY, got undefined`) }
+        }
+
+        if (!isList(args)) {
+            return { type : 'ERR', error : raise(`Expected args LIST returned to APPLY, got something else`) }
+        }
+
+        switch (true) {
+        case isLambda(kont.call):
+            let local = bindParams( kont.call.params, args, kont.call.env );
+            if (isError(local)) return { type : 'ERR', error : local };
+            return {
+                type : 'EVAL_EXPR',
+                expr : kont.call.body,
+                env  : local,
+                kont : {
+                    type : 'SCOPE_EXIT',
+                    env  : kont.env,
+                    kont : kont.kont
+                }
+            }
+        case isBuiltin(kont.call):
+            return {
+                type : 'RETURN',
+                value : kont.call.body(args),
+                env   : kont.env,
+                kont  : kont.kont
+            }
+        default:
+            throw new Error("CANNOT CALL THAT!");
+        }
+    case 'DROP':
+        return kont.kont;
+    case 'RETURN':
+        return kontinue(kont.kont, kont.value);
+    case 'HALT':
+        let final_result = stack.pop();
+        if (final_result !== undefined) {
+            kont.results.push(final_result)
+        }
+        return kont;
+    case 'DEFINE':
+        throw new Error("TODO");
+    case 'COND':
+        let test = stack.pop();
+        if (test == undefined) {
+            return { type : 'ERR', error : raise(`Expected Bool returned to COND, got undefined`) }
+        }
+        if (isBool(test) && isTrue(test)) {
+            return { type : 'EVAL_EXPR', expr : kont.if_true, env : kont.env, kont : kont.kont }
+        } else {
+            return { type : 'EVAL_EXPR', expr : kont.if_false, env : kont.env, kont : kont.kont }
+        }
+    case 'SCOPE_EXIT':
+        let returned = stack.pop();
+        if (returned == undefined) {
+            return { type : 'ERR', error : raise(`Expected result returned to SCOPE_EXIT, got undefined`) }
+        }
+        return {
+            type : 'RETURN',
+            value : returned,
+            env   : kont.env,
+            kont  : kont.kont
+        }
+    default:
+        throw new Error("WTF!")
+    }
+}
+
+// -----------------------------------------------------------------------------
+// simple tree walker
+// -----------------------------------------------------------------------------
 
 function evaluate (expr : TERM, env : ENV) : TERM {
     switch (true) {
@@ -244,18 +645,6 @@ function evaluateArgs (args : LIST, env : ENV) : LIST {
     return cons( evaluate( car(args), env ), evaluateArgs( cdr(args), env ) );
 }
 
-function bindParams (params : LIST, args : LIST, env : ENV) : ENV | ERROR {
-    while (!isNil(params)) {
-        if (isNil(args))          return raise(`ARITY MISMATCH! missing ${pprint(params)} parameter`);
-        if (!isSym(params.first)) return raise(`Expected parameter to be a symbol, wtf!`);
-        env = bind( params.first, args.first, env );
-        params = params.rest;
-        args   = args.rest;
-    }
-    if (!isNil(args)) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
-    return env;
-}
-
 function application (call : TERM, args : LIST, env : ENV) : TERM {
     switch (true) {
     case isBuiltin(call) : return call.body(args);
@@ -268,23 +657,27 @@ function application (call : TERM, args : LIST, env : ENV) : TERM {
     }
 }
 
+// -----------------------------------------------------------------------------
 
-console.log(
-    pprint(
-        evaluate(
-            list(
-                sym('+'),
-                num(10),
-                list(
-                    sym('*'),
-                    num(5),
-                    num(4),
-                ),
-            ),
-            initalizeEnv()
-        )
-    )
-);
+let env = initalizeEnv();
+
+let exprs = parse(`
+    (defun fact (n)
+        (if (== n 0) 1
+            (* n (fact (- n 1)))))
+
+    (defun fib (n)
+        (if (< n 2) n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+
+    (fact (fib 6))
+`);
+
+console.log(exprs.map(pprint));
+
+let result = run(exprs, env);
+
+console.log(pprint(result));
 
 
 
