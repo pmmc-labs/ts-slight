@@ -216,6 +216,12 @@ function initalizeEnv () : ENV {
     return env;
 }
 
+
+import { parse } from "sexpr-plus"
+
+
+
+
 function evaluate (expr : TERM, env : ENV) : TERM {
     switch (true) {
     case isError(expr) : throw new Error(pprint(expr));

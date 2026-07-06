@@ -4,6 +4,9 @@
     "typescript": "^5.5.2"
   },
   "scripts": {
-    "build" : "rm -rf ./js && tsc"
+    "build": "rm -rf ./js && tsc"
+  },
+  "dependencies": {
+    "sexpr-plus": "^7.0.0"
   }
 }
