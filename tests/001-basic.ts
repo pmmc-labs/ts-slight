@@ -1,3 +1,6 @@
+
+const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? true : false;
+
 // -----------------------------------------------------------------------------
 
 type TERM     = LIST | Sym | LITERAL | Bind | Env | CALLABLE | ERROR
@@ -489,7 +492,7 @@ function step (exprs : TERM[], env : ENV, quota : number) : Kontinue {
 }
 
 function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
-    console.log(pprintKont(steps, kont, stack))
+    if (DEBUG) console.log(pprintKont(steps, kont, stack));
     switch (kont.type) {
     case 'EVAL_EXPR':
         switch (true) {
@@ -715,10 +718,9 @@ let test_source = `
 
 let source = ``;
 
-
 let exprs = parse(source || test_source);
 
-console.log(exprs.map(pprint));
+if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
 let kont = run(exprs, env);
 
