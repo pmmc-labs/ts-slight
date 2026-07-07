@@ -159,60 +159,70 @@ function pprint (t : TERM) : string {
 }
 
 // -----------------------------------------------------------------------------
-// adapted from - https://gist.github.com/tluyben/0f9877bbe657d5f49122357f4a99d5c8
 
 function parse (source : string) : TERM[] {
-    const lexer = /"[^"]*"|\(|\)|[^\s()]+/g;
-    const ts = source.match(lexer)!;
-    let i = 0
-    const rec = () => {
-        let prg : any = undefined;
-        while (i < ts.length) {
-            let t = ts[i]!;
-            if (t === '(') {
-                if (prg === undefined) {
-                    prg = [];
-                } else {
-                    prg.push(rec())
-                }
-            } else if (t === ')') {
-                break;
+    const lexer  = /"[^"]*"|\'|\(|\)|[^\s()']+/g;
+
+    let tokens = source.match(lexer)!;
+
+    if (tokens == undefined) throw new Error(`Expected tokens from (${source})`)
+
+    //console.log(source);
+    //console.log(tokens);
+
+    let done  : any[] = [];
+    let stack : any[] = [];
+    while (tokens.length > 0) {
+        //console.log('TOKENS: ', tokens);
+        //console.log('STACK:  ', stack);
+        let token = tokens.shift()!;
+        switch (token) {
+        case '(':
+            stack.push([]);
+            break;
+        case ')':
+            let lst = list(...stack.pop()!);
+            if (stack.at(-1) == undefined) {
+                done.push(lst);
             } else {
-                switch (t) {
-                case '#true':
-                    prg.push(bool(true));
-                    break;
-                case '#false':
-                    prg.push(bool(false));
-                    break;
-                default:
-                    if (!isNaN(parseInt(t))) {
-                        prg.push(num(parseInt(t)))
-                    }
-                    else if (!isNaN(parseFloat(t))) {
-                        prg.push(num(parseFloat(t)))
-                    }
-                    else if (t.startsWith('"')) {
-                        prg.push(str(t))
-                    }
-                    else {
-                        prg.push(sym(t))
-                    }
-                }
+                stack.at(-1)!.push(lst);
             }
-            i++
+            break;
+        case "'":
+            stack.push([ sym('quote') ]);
+            if (tokens.at(0) != '(') {
+                tokens = [ tokens.shift()!, ')', ...tokens ];
+            }
+            break;
+        case '#true':
+            stack.at(-1)!.push(bool(true));
+            break;
+        case '#false':
+            stack.at(-1)!.push(bool(false));
+            break;
+        default:
+            if (token.startsWith('"')) {
+                stack.at(-1)!.push(str(token));
+            } else if (!isNaN(parseInt(token))) {
+                stack.at(-1)!.push(num(parseInt(token)));
+            } else if (!isNaN(parseFloat(token))) {
+                stack.at(-1)!.push(num(parseFloat(token)));
+            } else {
+                stack.at(-1)!.push(sym(token));
+            }
         }
-        //console.log(prg);
-        return list( ...prg )
     }
 
-    let terms : TERM[] = [];
-    while (i < ts.length) {
-        //console.log('...', ts.slice(i));
-        terms.push(rec());
-        i++;
+    while (stack.length > 0) {
+        let lst = list(...stack.pop()!);
+        if (stack.at(-1) == undefined) {
+            done.push(lst);
+        } else {
+            stack.at(-1)!.push(lst);
+        }
     }
-    return terms;
+
+    return done;
 }
 
 // -----------------------------------------------------------------------------
@@ -255,6 +265,20 @@ function liftBinOp (name : string, f : (n : TERM, m : TERM) => TERM) : Builtin {
     }
 }
 
+function liftListOp (name : string, f : (n : LIST) => TERM) : Builtin {
+    return {
+        type   : 'BIF',
+        params : list(sym('...args')),
+        name   : name,
+        body   : (args : LIST) : TERM => {
+            try {
+                return f(args);
+            } catch (e) {
+                return raise(`RUNTIME ERROR!! - ${String(e)}`);
+            }
+        }
+    }
+}
 
 function liftNumBinOp (name : string, f : (n : number, m : number) => number) : Builtin {
     return liftBinOp(name, (n : TERM, m : TERM) : Num | ERROR => {
@@ -276,6 +300,8 @@ function liftNumBoolOp (name : string, f : (n : number, m : number) => boolean) 
     })
 }
 
+
+
 // -----------------------------------------------------------------------------
 
 function initalizeEnv () : ENV {
@@ -296,7 +322,7 @@ function initalizeEnv () : ENV {
     env = bind( sym('eq?'), liftBinOp('eq?', (n, m) => bool(eq(n, m))),  env );
     env = bind( sym('ne?'), liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
 
-    env = bind( sym('pprint'), liftBinOp('pprint', (t) => str(pprint(t))), env );
+    env = bind( sym('list'), liftListOp('list', (args) => args), env );
 
     return env;
 }
@@ -482,6 +508,8 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
                     let value = cadr(tail);
                     if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`);
                     return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
+                case 'quote':
+                    return Return( car(tail), kont.env, kont.kont );
                 }
             }
             return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -569,7 +597,7 @@ let env = initalizeEnv();
 
 let exprs = parse(`
 
-
+    (list 1 2 'x 4)
 
 `);
 
