@@ -101,7 +101,7 @@ function lookup (name : Sym, env : ENV) : TERM {
         if (eq(env.first.name, name)) return env.first.value;
         env = env.rest;
     }
-    return nil
+    return raise(`Unable to find ${name.ident} in Env`);
 }
 
 function bindParams (params : LIST, args : LIST, env : ENV) : ENV | ERROR {
@@ -300,8 +300,6 @@ function liftNumBoolOp (name : string, f : (n : number, m : number) => boolean) 
     })
 }
 
-
-
 // -----------------------------------------------------------------------------
 
 function initalizeEnv () : ENV {
@@ -319,10 +317,24 @@ function initalizeEnv () : ENV {
     env = bind( sym('>='), liftNumBoolOp('>=', (n, m) => n >= m), env );
     env = bind( sym('>'),  liftNumBoolOp('>',  (n, m) => n >  m), env );
 
-    env = bind( sym('eq?'), liftBinOp('eq?', (n, m) => bool(eq(n, m))),  env );
-    env = bind( sym('ne?'), liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
+    env = bind( sym('eq?'),  liftBinOp('eq?', (n, m) => bool(eq(n, m))),  env );
+    env = bind( sym('ne?'),  liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
+    env = bind( sym('nil?'), liftUnOp('nil?', (t)    => bool(isNil(t))),  env );
 
     env = bind( sym('list'), liftListOp('list', (args) => args), env );
+
+    env = bind( sym('head'), liftUnOp('head', (list) => {
+        if (isCons(list)) return car(list);
+        return raise(`Expected a list for head, not ${list.type}`);
+    }),  env );
+    env = bind( sym('tail'), liftUnOp('tail', (list) => {
+        if (isCons(list)) return cdr(list);
+        return raise(`Expected a list for tail, not ${list.type}`);
+    }),  env );
+    env = bind( sym('cons'), liftBinOp( 'cons', (h, t) => {
+        if (isList(t)) return cons(h, t);
+        return raise(`Expected a list for second arg to cons, not ${t.type}`);
+    }), env );
 
     return env;
 }
@@ -515,7 +527,7 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
             return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
         case isSym(kont.expr):
             let found = lookup(kont.expr, kont.env);
-            if (isNil(found)) return RaiseError(`Could not find ${pprint(kont.expr)} in Env`);
+            if (isError(found)) return ReThrowError(found);
             return Return( found, kont.env, kont.kont );
         default :
             return Return( kont.expr, kont.env, kont.kont );
@@ -597,7 +609,106 @@ let env = initalizeEnv();
 
 let exprs = parse(`
 
-    (list 1 2 'x 4)
+   (defun adder (n m) (+ n m))
+
+    (defun double (n) (adder n n))
+
+    (defun fact (n)
+        (if (== n 0) 1
+            (* n (fact (- n 1)))))
+
+    (defun fib (n)
+        (if (< n 2) n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+
+    (defun tail-call-demo (n)
+        (if (== n 0) 0
+           (tail-call-demo (- n 1))))
+
+    (defun length (lst)
+        (if (nil? lst) 0
+            (+ 1 (length (tail lst)))))
+
+    (defun length-iter (lst count)
+        (if (nil? lst) count
+            (length-iter (tail lst) (+ count 1))))
+
+    (defun range (b e)
+        (if (== b e)
+            (cons e ())
+            (cons b (range (+ b 1) e))))
+
+    (defun map (f lst)
+        (if (nil? lst) ()
+            (cons (f (head lst)) (map f (tail lst)))))
+
+    (defun grep (f lst)
+        (if (nil? lst) ()
+            (if (f (head lst))
+                (cons (head lst) (grep f (tail lst)))
+                (grep f (tail lst)))))
+
+    (defun reduce (acc f lst)
+        (if (nil? lst) acc
+            (reduce (f (head lst) acc) f (tail lst))))
+
+    (defun sum (lst)
+        (reduce 0 (lambda (n acc) (+ acc n)) lst))
+
+    (defun product (lst)
+        (reduce 1 (lambda (n acc) (* acc n)) lst))
+
+    (defun even? (n) (if (== n 0) #true  (odd?  (- n 1))))
+    (defun odd?  (n) (if (== n 0) #false (even? (- n 1))))
+
+    (defun make-adder (n) (lambda (x) (+ x n)))
+
+    (list
+        (even? 10)
+        (odd? 10)
+        (fact 6)
+        (fib 6)
+        (fact (fib 6))
+        (length (list 1 2 3 4 5))
+        (length-iter (list 1 2 3 4 5) 0)
+        (tail-call-demo 10)
+        (length
+            (list
+            30
+            (+ 10 20)
+            (+ (* 2 5) 20)
+            (+ 10 (* 4 5))
+            (+ (* 2 5) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
+            (adder 10 20)
+            (adder (double 5) 20)
+            (adder 10 (* (double 2) 5))
+            (adder (fib 6) 22)
+            (adder (fib 8) (+ 1 (double 4)))
+            (- (fact 6) (+ (* (fact 3) 100) 90))
+            ((lambda (n m) (+ n m)) 10 20)
+            ((lambda (f n m) (f n m)) adder 10 20)
+            (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
+            (length (range 1 30))
+            (+ (length (range 1 10)) (length (range 1 (* 4 5))))
+            (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
+            (sum (list 4 (fib 8) (- (fact 3) 1)))
+            (+ (sum (range 0 (fib 6))) (- 2 8))
+            (sum (grep
+                    (lambda (x) (>= x 10))
+                    (list 0 2 10 4 7 20 3 1)))
+            (sum (map
+                    (lambda (x) (if (<= x 20) x 0))
+                    (list 100 25 10 411 75 20 35 1000)))
+            (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
+            (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
+            ((make-adder 10) 20)
+            ((make-adder 20) 10)
+            )
+        )
+        "<- all done!"
+    )
 
 `);
 
@@ -614,6 +725,10 @@ if (kont.type == 'HALT') {
 
 /*
 
+   (defun adder (n m) (+ n m))
+
+    (defun double (n) (adder n n))
+
     (defun fact (n)
         (if (== n 0) 1
             (* n (fact (- n 1)))))
@@ -622,18 +737,94 @@ if (kont.type == 'HALT') {
         (if (< n 2) n
             (+ (fib (- n 1)) (fib (- n 2)))))
 
-    (fact (fib 6))
+    (defun tail-call-demo (n)
+        (if (== n 0) 0
+           (tail-call-demo (- n 1))))
+
+    (defun length (lst)
+        (if (nil? lst) 0
+            (+ 1 (length (tail lst)))))
+
+    (defun length-iter (lst count)
+        (if (nil? lst) count
+            (length-iter (tail lst) (+ count 1))))
+
+    (defun range (b e)
+        (if (== b e)
+            (cons e ())
+            (cons b (range (+ b 1) e))))
+
+    (defun map (f lst)
+        (if (nil? lst) ()
+            (cons (f (head lst)) (map f (tail lst)))))
+
+    (defun grep (f lst)
+        (if (nil? lst) ()
+            (if (f (head lst))
+                (cons (head lst) (grep f (tail lst)))
+                (grep f (tail lst)))))
+
+    (defun reduce (acc f lst)
+        (if (nil? lst) acc
+            (reduce (f (head lst) acc) f (tail lst))))
+
+    (defun sum (lst)
+        (reduce 0 (lambda (n acc) (+ acc n)) lst))
+
+    (defun product (lst)
+        (reduce 1 (lambda (n acc) (* acc n)) lst))
+
+    (defun even? (n) (if (== n 0) #true  (odd?  (- n 1))))
+    (defun odd?  (n) (if (== n 0) #false (even? (- n 1))))
+
+    (defun make-adder (n) (lambda (x) (+ x n)))
+
+    (list
+        (even? 10)
+        (odd? 10)
+        (fact 6)
+        (fib 6)
+        (fact (fib 6))
+        (length (list 1 2 3 4 5))
+        (length-iter (list 1 2 3 4 5) 0)
+        (tail-call-demo 10)
+        ;; bunch of silly ways to get 30
+        (length
+            (list
+            30
+            (+ 10 20)
+            (+ (* 2 5) 20)
+            (+ 10 (* 4 5))
+            (+ (* 2 5) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
+            (adder 10 20)
+            (adder (double 5) 20)
+            (adder 10 (* (double 2) 5))
+            (adder (fib 6) 22)
+            (adder (fib 8) (+ 1 (double 4)))
+            (- (fact 6) (+ (* (fact 3) 100) 90))
+            ((lambda (n m) (+ n m)) 10 20)
+            ((lambda (f n m) (f n m)) adder 10 20)
+            (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
+            (length (range 1 30))
+            (+ (length (range 1 10)) (length (range 1 (* 4 5))))
+            (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
+            (sum (list 4 (fib 8) (- (fact 3) 1)))
+            (+ (sum (range 0 (fib 6))) (- 2 8))
+            (sum (grep
+                    (lambda (x) (>= x 10))
+                    (list 0 2 10 4 7 20 3 1)))
+            (sum (map
+                    (lambda (x) (if (<= x 20) x 0))
+                    (list 100 25 10 411 75 20 35 1000)))
+            (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
+            (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
+            ((make-adder 10) 20)
+            ((make-adder 20) 10)
+            )
+        )
+        "<- all done!"
+    )
 
 */
-
-
-
-
-
-
-
-
-
-
-
-
