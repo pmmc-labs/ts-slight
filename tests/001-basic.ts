@@ -334,6 +334,11 @@ function initalizeEnv () : Env {
         return raise(`Expected a list for second arg to cons, not ${t.type}`);
     }), env );
 
+    env = bind( sym('pprint'), liftUnOp( 'pprint', (t) => {
+        console.log(pprint(t));
+        return nil;
+    }), env );
+
     return env;
 }
 
@@ -352,9 +357,8 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Yield     = { type : 'YIELD'      } & Kontinuation
-
-type Halt      = { type : 'HALT', results : TERM[] }
-type Err       = { type : 'ERR',  error : ERROR }
+type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
+type Halt      = { type : 'HALT', results : TERM[], env : Env }
 
 type Kontinue =
     | EvalExpr
@@ -390,8 +394,13 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     return `${stepsStr} | ${kontStr.padEnd(50, ' ')} := ${stack.map(pprint).join(', ')}`
 }
 
-function RaiseError   (error : string) : Err { return { type : 'ERR', error : raise(error) } }
-function ReThrowError (error : ERROR)  : Err { return { type : 'ERR', error } }
+function ThrowError (error : ERROR, kont : Kontinue)  : Err {
+    return { type : 'ERR', error, env : kont.env, kont }
+}
+
+function RaiseError   (error : string, kont : Kontinue) : Err {
+    return ThrowError( raise(error), kont )
+}
 
 function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {
     return { type : 'EVAL_EXPR', expr, env, kont }
@@ -429,8 +438,8 @@ function Yield (env : Env, kont : Kontinue) : Yield {
     return { type : 'YIELD', env, kont }
 }
 
-function Halt () : Halt {
-    return { type : 'HALT', results : [] }
+function Halt (env : Env) : Halt {
+    return { type : 'HALT', results : [], env }
 }
 
 function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
@@ -441,10 +450,15 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 // -----------------------------------------------------------------------------
 
 class Strand {
-    public steps : number = 0;
-    public quota : number = 100_000;
+    public steps : number     = 0;
+    public quota : number     = 100_000;
+    public queue : Kontinue[] = [];
+    public done  : Halt[]     = [];
 
-    run (exprs : TERM[], env : Env) : Kontinue {
+    private pid_seq  : number = 0;
+
+    run (exprs : TERM[], env : Env) : Halt[] {
+
         let to_run = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -465,18 +479,40 @@ class Strand {
             }
         }
 
-        return this.step(this.prepare(to_run, newEnv(env)));
+        let init_pid = this.prepare(to_run, newEnv(env));
+
+        while (this.queue.length > 0 && this.steps < this.quota) {
+            let next = this.queue.pop()!;
+            if (DEBUG) {
+                console.log(`>>>>> : PID(${ pprint(lookup(sym('$$'), next.env)) })`);
+            }
+            let kont = this.step(next);
+            switch (kont.type) {
+            case 'HALT'  :
+                this.done.push(kont);
+                break;
+            case 'YIELD' :
+                this.queue.unshift(kont.kont);
+                break;
+            default:
+                throw new Error(`Expected either HALT/YIELD, got ${kont.type}`);
+            }
+        }
+
+        return this.done;
     }
 
-    prepare (exprs : TERM[], env : Env) : Kontinue {
-        if (exprs.length == 0) return Halt();
+    prepare (exprs : TERM[], env : Env) : Num {
+        let pid = num(++this.pid_seq);
+        env = bind( sym('$$'), pid, env );
 
-        let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
+        let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt( env ) );
         while (exprs.length > 0) {
             kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
         }
 
-        return kont;
+        this.queue.push( kont );
+        return pid
     }
 
     resume (kont : Kontinue) : Kontinue {
@@ -513,9 +549,9 @@ class Strand {
                     switch (head.ident) {
                     case 'if' :
                         let [ cond, if_true, if_false ] = uncons(tail);
-                        if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`);
-                        if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`);
-                        if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`);
+                        if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`, kont);
+                        if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
+                        if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
                         return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
                     case 'do' :
                         let exprs = uncons(tail);
@@ -527,55 +563,57 @@ class Strand {
                     case 'lambda' :
                         let params = car(tail);
                         let body   = cadr(tail);
-                        if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`);
+                        if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`, kont);
                         return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
                     case 'let':
                         let name  = car(tail);
                         let value = cadr(tail);
-                        if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`);
+                        if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`, kont);
                         return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
                     case 'quote':
                         return Return( car(tail), kont.env, kont.kont );
                     case 'yield':
                         return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
+                    case 'fork':
+                        return Yield( kont.env, Return( this.prepare([ car(tail) ], newEnv(kont.env)), kont.env, kont.kont ));
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
             case isSym(kont.expr):
                 let found = lookup(kont.expr, kont.env);
-                if (isError(found)) return ReThrowError(found);
+                if (isError(found)) return ThrowError(found, kont);
                 return Return( found, kont.env, kont.kont );
             default :
                 return Return( kont.expr, kont.env, kont.kont );
             }
         case 'EVAL_HEAD':
             let call = stack.pop();
-            if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`);
-            if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`);
+            if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`, kont);
+            if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`, kont);
             return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
         case 'EVAL_ARGS':
             let done = kont.done;
             if (stack.length > 0) {
                 let next_arg = stack.pop();
-                if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`);
+                if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`, kont);
                 done.push(next_arg);
             }
             if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
             return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
         case 'APPLY':
             let args = stack.pop();
-            if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`);
-            if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`);
+            if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`, kont);
+            if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`, kont);
 
             switch (true) {
             case isLambda(kont.call):
                 let local = bindParams( kont.call.params, args, kont.call.env );
-                if (isError(local)) return ReThrowError(local);
+                if (isError(local)) return ThrowError(local, kont);
                 return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
             case isBuiltin(kont.call):
                 return Return( kont.call.body(args), kont.env, kont.kont )
             default:
-                return RaiseError(`Expected Lambda or Builtin in APPLY`)
+                return RaiseError(`Expected Lambda or Builtin in APPLY`, kont)
             }
         case 'DROP':
             return kont.kont;
@@ -589,7 +627,7 @@ class Strand {
             return kont;
         case 'DEFINE':
             let value = stack.pop();
-            if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`);
+            if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
             let local = bind( kont.name, value, kont.env );
             //// NOTE:
             //// This is a bit gross, but works for now
@@ -605,7 +643,7 @@ class Strand {
             return kont.kont;
         case 'COND':
             let test = stack.pop();
-            if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`);
+            if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`, kont);
 
             if (isBool(test) && isTrue(test)) {
                 return EvalExpr( kont.if_true, kont.env, kont.kont )
@@ -614,10 +652,10 @@ class Strand {
             }
         case 'SCOPE_EXIT':
             let returned = stack.pop();
-            if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`);
+            if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
             return Return( returned, kont.env, kont.kont )
         default:
-            return RaiseError(`Unknown Kontinue`);
+            return RaiseError(`Unknown Kontinue`, kont);
         }
     }
 }
@@ -742,11 +780,12 @@ let test_source = `
 
 let source = `
 
-    (defun fact (n)
-        (if (== n 0) 1
-            (* n (yield (fact (- n 1))))))
-
-    (let x (yield (fact 6)))
+    (let pid (fork (do
+            (pprint (list 'in-fork $$))
+            (yield (pprint (list 'again-in-fork $$)))
+        )))
+    (pprint (list 'in-root-child-pid pid))
+    (pprint (list 'in-root $$))
 
 `;
 
@@ -756,20 +795,26 @@ if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
 let strand = new Strand();
 
-let kont : Kontinue = strand.run(exprs, env);
-while (kont.type == 'YIELD') {
-    console.log('... resuming from yield')
-    kont = strand.resume(kont);
-}
+let konts = strand.run(exprs, env);
 
-if (kont.type == 'HALT') {
+for (const kont of konts) {
     console.log(kont.results.map(pprint));
-} else {
-    console.log(`Expected HALT, but got ${kont.type}`);
 }
 
 
 /*
 
+(defun for-loop (init test next body)
+    (if (test (init))
+        (do
+            (body (init))
+            (for-loop (lambda () (next (init))) test next body))
+        ()))
+
+(for-loop
+    (lambda () 0)
+    (lambda (i) (< i 10))
+    (lambda (i) (+ i 1))
+    (lambda (i) (pprint i)))
 
 */
