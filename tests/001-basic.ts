@@ -310,6 +310,7 @@ type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Konti
 type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
 type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
 type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
+type Define    = { type : 'DEFINE',    name : Sym                      } & Kontinuation
 type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
 
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
@@ -327,6 +328,7 @@ type Kontinue =
     | Return
     | Halt
     | Err
+    | Define
     | Cond
     | ScopeExit
 
@@ -340,6 +342,7 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`; break;
     case 'DROP'       : break;
     case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
+    case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`; break;;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'HALT'       : break;
@@ -371,6 +374,10 @@ function Return (value : TERM, env : ENV, kont : Kontinue) : Return {
     return { type  : 'RETURN', value, env, kont }
 }
 
+function Define (name : Sym, env : ENV, kont : Kontinue) : Define {
+    return { type  : 'DEFINE', name, env, kont }
+}
+
 function Cond (if_true : TERM, if_false : TERM, env : ENV, kont : Kontinue) : Cond {
     return { type : 'COND', if_true, if_false, env, kont }
 }
@@ -391,7 +398,7 @@ function ScopeExit (env : ENV, kont : Kontinue) : ScopeExit {
 
 let steps = 0;
 
-function run (exprs : TERM[], env : ENV) : TERM {
+function run (exprs : TERM[], env : ENV, quota : number = 100_000) : Kontinue {
     let to_run = [];
     let to_fix = [];
     for (const expr of exprs) {
@@ -416,11 +423,11 @@ function run (exprs : TERM[], env : ENV) : TERM {
 
     to_fix.forEach((b) => { (b.value as Lambda).env = env })
 
-    return step(to_run, env);
+    return step(to_run, env, quota);
 }
 
-function step (exprs : TERM[], env : ENV) : TERM {
-    if (exprs.length == 0) return nil;
+function step (exprs : TERM[], env : ENV, quota : number) : Kontinue {
+    if (exprs.length == 0) return Halt();
 
     let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
     while (exprs.length > 0) {
@@ -428,7 +435,7 @@ function step (exprs : TERM[], env : ENV) : TERM {
     }
 
     STEP_LOOP:
-    while (steps < 100_000) {
+    while (steps < quota) {
         kont = kontinue(kont);
         switch (kont.type) {
         case 'HALT'   : break STEP_LOOP;
@@ -438,11 +445,7 @@ function step (exprs : TERM[], env : ENV) : TERM {
         }
     }
 
-    if (kont.type != 'HALT') {
-        throw new Error(`Expected HALT, but somehow did not get it, hmmmm`);
-    }
-
-    return kont.results.pop()!;
+    return kont;
 }
 
 function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
@@ -474,6 +477,11 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
                     let body   = cadr(tail);
                     if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`);
                     return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
+                case 'let':
+                    let name  = car(tail);
+                    let value = cadr(tail);
+                    if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`);
+                    return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
                 }
             }
             return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -521,6 +529,22 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
         let final_result = stack.pop();
         if (final_result !== undefined) kont.results.push(final_result);
         return kont;
+    case 'DEFINE':
+        let value = stack.pop();
+        if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`);
+        let local = bind( kont.name, value, kont.env );
+        // NOTE:
+        // This is a bit gross, but works for now
+        // push the new binding forward ...
+        let k = kont.kont;
+        // but stop when
+        //  - we reach something without a kont (HALT, ERR)
+        //  - we reach a scope exit barrier
+        while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
+            k.env = local;
+            k     = k.kont;
+        }
+        return kont.kont;
     case 'COND':
         let test = stack.pop();
         if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`);
@@ -544,6 +568,24 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
 let env = initalizeEnv();
 
 let exprs = parse(`
+
+
+
+`);
+
+console.log(exprs.map(pprint));
+
+let kont = run(exprs, env);
+
+if (kont.type == 'HALT') {
+    console.log(kont.results.map(pprint));
+} else {
+    console.log(`Expected HALT, but got ${kont.type}`);
+}
+
+
+/*
+
     (defun fact (n)
         (if (== n 0) 1
             (* n (fact (- n 1)))))
@@ -553,16 +595,8 @@ let exprs = parse(`
             (+ (fib (- n 1)) (fib (- n 2)))))
 
     (fact (fib 6))
-`);
 
-console.log(exprs.map(pprint));
-
-let result = run(exprs, env);
-
-console.log(pprint(result));
-
-
-
+*/
 
 
 
