@@ -3,10 +3,10 @@ const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? tr
 
 // -----------------------------------------------------------------------------
 
-type TERM     = LIST | Sym | LITERAL | Env | CALLABLE | ERROR
 type LITERAL  = Bool | Str | Num
 type LIST     = Cons | Nil
 type CALLABLE = Lambda | Builtin
+type TERM     = LIST | LITERAL | CALLABLE | Sym | Env | ERROR
 
 type Nil      = { type : 'NIL' }
 type Cons     = { type : 'CONS', first  : TERM, rest: LIST }
@@ -351,6 +351,7 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
+type Yield     = { type : 'YIELD'      } & Kontinuation
 
 type Halt      = { type : 'HALT', results : TERM[] }
 type Err       = { type : 'ERR',  error : ERROR }
@@ -362,6 +363,7 @@ type Kontinue =
     | Apply
     | Drop
     | Return
+    | Yield
     | Halt
     | Err
     | Define
@@ -381,6 +383,7 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`; break;;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
+    case 'YIELD'      : break;
     case 'HALT'       : break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
@@ -422,6 +425,10 @@ function Drop (env : Env, kont : Kontinue) : Drop {
     return { type : 'DROP', env, kont }
 }
 
+function Yield (env : Env, kont : Kontinue) : Yield {
+    return { type : 'YIELD', env, kont }
+}
+
 function Halt () : Halt {
     return { type : 'HALT', results : [] }
 }
@@ -433,167 +440,185 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 // -----------------------------------------------------------------------------
 
-let steps = 0;
+class Strand {
+    public steps : number = 0;
+    public quota : number = 100_000;
 
-function run (exprs : TERM[], env : Env, quota : number = 100_000) : Kontinue {
-    let to_run = [];
-    for (const expr of exprs) {
-        if (isCons(expr)) {
-            let head = car(expr);
-            if (isSym(head) && head.ident === 'defun') {
-                let [ name, params, body ] = uncons(cdr(expr));
-                if (name   === undefined) throw new Error(`defun <name> ... duh!`);
-                if (params === undefined) throw new Error(`defun <name> <params> ... duh!`);
-                if (body   === undefined) throw new Error(`defun <name> <params> <body>... duh!`);
-                if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
-                if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
-                env = bind( name, lambda( params, body, env ), env );
+    run (exprs : TERM[], env : Env) : Kontinue {
+        let to_run = [];
+        for (const expr of exprs) {
+            if (isCons(expr)) {
+                let head = car(expr);
+                if (isSym(head) && head.ident === 'defun') {
+                    let [ name, params, body ] = uncons(cdr(expr));
+                    if (name   === undefined) throw new Error(`defun <name> ... duh!`);
+                    if (params === undefined) throw new Error(`defun <name> <params> ... duh!`);
+                    if (body   === undefined) throw new Error(`defun <name> <params> <body>... duh!`);
+                    if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
+                    if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
+                    env = bind( name, lambda( params, body, env ), env );
+                } else {
+                    to_run.push(expr);
+                }
             } else {
                 to_run.push(expr);
             }
-        } else {
-            to_run.push(expr);
         }
-    }
-    return step(to_run, newEnv(env), quota);
-}
 
-function step (exprs : TERM[], env : Env, quota : number) : Kontinue {
-    if (exprs.length == 0) return Halt();
-
-    let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
-    while (exprs.length > 0) {
-        kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
+        return this.step(this.prepare(to_run, newEnv(env)));
     }
 
-    STEP_LOOP:
-    while (steps < quota) {
-        steps++;
-        kont = kontinue(kont);
-        switch (kont.type) {
-        case 'HALT'   : break STEP_LOOP;
-        case 'ERR'    : throw new Error(pprint(kont.error));
-        case 'RETURN' :
-            kont = kontinue( kont.kont, kont.value );
+    prepare (exprs : TERM[], env : Env) : Kontinue {
+        if (exprs.length == 0) return Halt();
+
+        let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
+        while (exprs.length > 0) {
+            kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
         }
+
+        return kont;
     }
 
-    return kont;
-}
+    resume (kont : Kontinue) : Kontinue {
+        if (kont.type != 'YIELD') throw new Error(`You can only resume from a Yield, not ${kont.type}`);
+        return this.step(kont.kont);
+    }
 
-function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
-    if (DEBUG) console.log(pprintKont(steps, kont, stack));
-    switch (kont.type) {
-    case 'EVAL_EXPR':
-        switch (true) {
-        case isCons(kont.expr):
-            let head = car(kont.expr);
-            let tail = cdr(kont.expr);
-            if (isSym(head) && isCons(tail)) {
-                switch (head.ident) {
-                case 'if' :
-                    let [ cond, if_true, if_false ] = uncons(tail);
-                    if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`);
-                    if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`);
-                    if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`);
-                    return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
-                case 'do' :
-                    let exprs = uncons(tail);
-                    let next = EvalExpr( exprs.pop()!, kont.env, kont.kont );
-                    while (exprs.length > 0) {
-                        next = EvalExpr( exprs.pop()!, kont.env, Drop( kont.env, next ) )
-                    }
-                    return next;
-                case 'lambda' :
-                    let params = car(tail);
-                    let body   = cadr(tail);
-                    if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`);
-                    return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
-                case 'let':
-                    let name  = car(tail);
-                    let value = cadr(tail);
-                    if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`);
-                    return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
-                case 'quote':
-                    return Return( car(tail), kont.env, kont.kont );
-                }
+    step (kont : Kontinue) : Kontinue {
+        while (this.steps < this.quota) {
+            this.steps++;
+            kont = this.kontinue(kont);
+            switch (kont.type) {
+            case 'HALT'   :
+            case 'YIELD'  : return kont;
+            case 'ERR'    : throw new Error(pprint(kont.error));
+            case 'RETURN' :
+                this.steps++;
+                kont = this.kontinue( kont.kont, kont.value );
+                break;
             }
-            return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
-        case isSym(kont.expr):
-            let found = lookup(kont.expr, kont.env);
-            if (isError(found)) return ReThrowError(found);
-            return Return( found, kont.env, kont.kont );
-        default :
-            return Return( kont.expr, kont.env, kont.kont );
         }
-    case 'EVAL_HEAD':
-        let call = stack.pop();
-        if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`);
-        if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`);
-        return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
-    case 'EVAL_ARGS':
-        let done = kont.done;
-        if (stack.length > 0) {
-            let next_arg = stack.pop();
-            if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`);
-            done.push(next_arg);
-        }
-        if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
-        return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
-    case 'APPLY':
-        let args = stack.pop();
-        if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`);
-        if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`);
+        return kont;
+    }
 
-        switch (true) {
-        case isLambda(kont.call):
-            let local = bindParams( kont.call.params, args, kont.call.env );
-            if (isError(local)) return ReThrowError(local);
-            return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
-        case isBuiltin(kont.call):
-            return Return( kont.call.body(args), kont.env, kont.kont )
+    kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
+        if (DEBUG) console.log(pprintKont(this.steps, kont, stack));
+        switch (kont.type) {
+        case 'EVAL_EXPR':
+            switch (true) {
+            case isCons(kont.expr):
+                let head = car(kont.expr);
+                let tail = cdr(kont.expr);
+                if (isSym(head) && isCons(tail)) {
+                    switch (head.ident) {
+                    case 'if' :
+                        let [ cond, if_true, if_false ] = uncons(tail);
+                        if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`);
+                        if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`);
+                        if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`);
+                        return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
+                    case 'do' :
+                        let exprs = uncons(tail);
+                        let next = EvalExpr( exprs.pop()!, kont.env, kont.kont );
+                        while (exprs.length > 0) {
+                            next = EvalExpr( exprs.pop()!, kont.env, Drop( kont.env, next ) )
+                        }
+                        return next;
+                    case 'lambda' :
+                        let params = car(tail);
+                        let body   = cadr(tail);
+                        if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`);
+                        return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
+                    case 'let':
+                        let name  = car(tail);
+                        let value = cadr(tail);
+                        if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`);
+                        return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
+                    case 'quote':
+                        return Return( car(tail), kont.env, kont.kont );
+                    case 'yield':
+                        return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
+                    }
+                }
+                return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
+            case isSym(kont.expr):
+                let found = lookup(kont.expr, kont.env);
+                if (isError(found)) return ReThrowError(found);
+                return Return( found, kont.env, kont.kont );
+            default :
+                return Return( kont.expr, kont.env, kont.kont );
+            }
+        case 'EVAL_HEAD':
+            let call = stack.pop();
+            if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`);
+            if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`);
+            return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
+        case 'EVAL_ARGS':
+            let done = kont.done;
+            if (stack.length > 0) {
+                let next_arg = stack.pop();
+                if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`);
+                done.push(next_arg);
+            }
+            if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
+            return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
+        case 'APPLY':
+            let args = stack.pop();
+            if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`);
+            if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`);
+
+            switch (true) {
+            case isLambda(kont.call):
+                let local = bindParams( kont.call.params, args, kont.call.env );
+                if (isError(local)) return ReThrowError(local);
+                return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
+            case isBuiltin(kont.call):
+                return Return( kont.call.body(args), kont.env, kont.kont )
+            default:
+                return RaiseError(`Expected Lambda or Builtin in APPLY`)
+            }
+        case 'DROP':
+            return kont.kont;
+        case 'YIELD':
+            return kont;
+        case 'RETURN':
+            return kont;
+        case 'HALT':
+            let final_result = stack.pop();
+            if (final_result !== undefined) kont.results.push(final_result);
+            return kont;
+        case 'DEFINE':
+            let value = stack.pop();
+            if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`);
+            let local = bind( kont.name, value, kont.env );
+            //// NOTE:
+            //// This is a bit gross, but works for now
+            //// push the new binding forward ...
+            //let k = kont.kont;
+            //// but stop when
+            ////  - we reach something without a kont (HALT, ERR)
+            ////  - we reach a scope exit barrier
+            //while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
+            //    k.env = local;
+            //    k     = k.kont;
+            //}
+            return kont.kont;
+        case 'COND':
+            let test = stack.pop();
+            if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`);
+
+            if (isBool(test) && isTrue(test)) {
+                return EvalExpr( kont.if_true, kont.env, kont.kont )
+            } else {
+                return EvalExpr( kont.if_false, kont.env, kont.kont )
+            }
+        case 'SCOPE_EXIT':
+            let returned = stack.pop();
+            if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`);
+            return Return( returned, kont.env, kont.kont )
         default:
-            return RaiseError(`Expected Lambda or Builtin in APPLY`)
+            return RaiseError(`Unknown Kontinue`);
         }
-    case 'DROP':
-        return kont.kont;
-    case 'RETURN':
-        return kont;
-    case 'HALT':
-        let final_result = stack.pop();
-        if (final_result !== undefined) kont.results.push(final_result);
-        return kont;
-    case 'DEFINE':
-        let value = stack.pop();
-        if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`);
-        let local = bind( kont.name, value, kont.env );
-        //// NOTE:
-        //// This is a bit gross, but works for now
-        //// push the new binding forward ...
-        //let k = kont.kont;
-        //// but stop when
-        ////  - we reach something without a kont (HALT, ERR)
-        ////  - we reach a scope exit barrier
-        //while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
-        //    k.env = local;
-        //    k     = k.kont;
-        //}
-        return kont.kont;
-    case 'COND':
-        let test = stack.pop();
-        if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`);
-
-        if (isBool(test) && isTrue(test)) {
-            return EvalExpr( kont.if_true, kont.env, kont.kont )
-        } else {
-            return EvalExpr( kont.if_false, kont.env, kont.kont )
-        }
-    case 'SCOPE_EXIT':
-        let returned = stack.pop();
-        if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`);
-        return Return( returned, kont.env, kont.kont )
-    default:
-        return RaiseError(`Unknown Kontinue`);
     }
 }
 
@@ -715,15 +740,27 @@ let test_source = `
 
 `;
 
-let source = ``;
+let source = `
+
+    (defun fact (n)
+        (if (== n 0) 1
+            (* n (yield (fact (- n 1))))))
+
+    (let x (yield (fact 6)))
+
+`;
 
 let exprs = parse(source || test_source);
 
 if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
-console.time('run');
-let kont = run(exprs, env);
-console.timeEnd('run');
+let strand = new Strand();
+
+let kont : Kontinue = strand.run(exprs, env);
+while (kont.type == 'YIELD') {
+    console.log('... resuming from yield')
+    kont = strand.resume(kont);
+}
 
 if (kont.type == 'HALT') {
     console.log(kont.results.map(pprint));
