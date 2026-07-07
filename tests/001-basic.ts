@@ -6,8 +6,6 @@ const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? tr
 type TERM     = LIST | Sym | LITERAL | Bind | Env | CALLABLE | ERROR
 type LITERAL  = Bool | Str | Num
 type LIST     = Cons | Nil
-type ENV      = Env  | Nil
-type LISTLIKE = Cons | Env | Nil
 type CALLABLE = Lambda | Builtin
 
 type Nil      = { type : 'NIL' }
@@ -20,9 +18,9 @@ type Bool     = { type : 'BOOL',  value : boolean }
 type ERROR    = { type : 'ERROR', error : any }
 
 type Bind     = { type : 'BIND', name : Sym, value : TERM }
-type Env      = { type : 'ENV', first : Bind, rest: ENV }
+type Env      = { type : 'ENV', bindings : Map<string,TERM>, parent : Env | undefined }
 
-type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : ENV }
+type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
 // -----------------------------------------------------------------------------
@@ -75,7 +73,7 @@ function bool (value : boolean) : Bool { return { type : 'BOOL', value } }
 
 function sym (ident : string) : Sym { return { type : 'SYM', ident } }
 
-function lambda (params : LIST, body : TERM, env : ENV) : Lambda {
+function lambda (params : LIST, body : TERM, env : Env) : Lambda {
     return { type : 'LAMBDA', params, body, env }
 }
 
@@ -91,37 +89,41 @@ function list (...args : TERM[]) : LIST {
     return xs;
 }
 
-function assoc (first : Bind, rest : ENV) : Env {
-    return { type : 'ENV', first, rest }
+function newEnv (parent : Env | undefined = undefined) : Env {
+    return { type : 'ENV', bindings : new Map<string,TERM>(), parent }
 }
 
-function bind (name : Sym, value : TERM, env : ENV) : Env {
-    return assoc( { type : 'BIND', name, value }, env )
+function bind (name : Sym, value : TERM, env : Env) : Env {
+    env.bindings.set( name.ident, value );
+    return env;
 }
 
-function lookup (name : Sym, env : ENV) : TERM {
-    while (!isNil(env)) {
-        if (eq(env.first.name, name)) return env.first.value;
-        env = env.rest;
+function lookup (name : Sym, env : Env) : TERM {
+    while (env != undefined) {
+        if (env.bindings.has(name.ident)) return env.bindings.get(name.ident)!;
+        if (env.parent == undefined) break;
+        env = env.parent;
     }
     return raise(`Unable to find ${name.ident} in Env`);
 }
 
-function bindParams (params : LIST, args : LIST, env : ENV) : ENV | ERROR {
+function bindParams (params : LIST, args : LIST, env : Env) : Env | ERROR {
+    let local = newEnv(env);
     while (!isNil(params)) {
         if (isNil(args))          return raise(`ARITY MISMATCH! missing ${pprint(params)} parameter`);
         if (!isSym(params.first)) return raise(`Expected parameter to be a symbol, wtf!`);
-        env = bind( params.first, args.first, env );
+        local = bind( params.first, args.first, local );
         params = params.rest;
         args   = args.rest;
     }
     if (!isNil(args)) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
-    return env;
+    //console.log(local);
+    return local;
 }
 
 // ...
 
-function uncons (list : LISTLIKE) : TERM[] {
+function uncons (list : LIST) : TERM[] {
     let terms = [];
     while (list.type != 'NIL') {
         terms.push(list.first);
@@ -139,7 +141,7 @@ function eq (lhs : TERM, rhs : TERM) : boolean {
     case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && eq(lhs.env, rhs.env);
     case isBuiltin(lhs) && isBuiltin(rhs) : return eq(lhs.params, rhs.params) && lhs.body === rhs.body && lhs.name == rhs.name;
     case isBind(lhs)    && isBind(rhs)    : return eq(lhs.name, rhs.name)     && eq(lhs.value, rhs.value);
-    case isEnv(lhs)     && isEnv(rhs)     : return eq(lhs.first, rhs.first)   && eq(lhs.rest, rhs.rest);
+    case isEnv(lhs)     && isEnv(rhs)     : false;
     default : return false;
     }
 }
@@ -155,7 +157,7 @@ function pprint (t : TERM) : string {
     case isLambda(t)  : return `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`
     case isBuiltin(t) : return `#<${t.name}>`
     case isBind(t)    : return `(${pprint(t.name)} . ${pprint(t.value)})`
-    case isEnv(t)     : return `{ ${uncons(t).map(pprint).join(' ')} }`
+    case isEnv(t)     : return `{ ${t.bindings.toString()} ${t.parent ? pprint(t.parent) : '~'} }`
     case isError(t)   : return `E!${String(t.error)}`
     default : throw new Error(`WTF IS ${String(t)}`);
     }
@@ -305,8 +307,8 @@ function liftNumBoolOp (name : string, f : (n : number, m : number) => boolean) 
 
 // -----------------------------------------------------------------------------
 
-function initalizeEnv () : ENV {
-    let env : ENV = nil;
+function initalizeEnv () : Env {
+    let env : Env = newEnv();
     env = bind( sym('+'), liftNumBinOp('+', (n, m) => n + m), env );
     env = bind( sym('-'), liftNumBinOp('-', (n, m) => n - m), env );
     env = bind( sym('*'), liftNumBinOp('*', (n, m) => n * m), env );
@@ -314,7 +316,7 @@ function initalizeEnv () : ENV {
     env = bind( sym('%'), liftNumBinOp('%', (n, m) => n % m), env );
 
     env = bind( sym('=='), liftNumBoolOp('==', (n, m) => n == m), env );
-    env = bind( sym('!='), liftNumBoolOp('!=', (n, m) => n == m), env );
+    env = bind( sym('!='), liftNumBoolOp('!=', (n, m) => n != m), env );
     env = bind( sym('<='), liftNumBoolOp('<=', (n, m) => n <= m), env );
     env = bind( sym('<'),  liftNumBoolOp('<',  (n, m) => n <  m), env );
     env = bind( sym('>='), liftNumBoolOp('>=', (n, m) => n >= m), env );
@@ -344,7 +346,7 @@ function initalizeEnv () : ENV {
 
 // -----------------------------------------------------------------------------
 
-type Kontinuation = { env : ENV, kont : Kontinue }
+type Kontinuation = { env : Env, kont : Kontinue }
 
 type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
 type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Kontinuation
@@ -395,35 +397,35 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
 function RaiseError   (error : string) : Err { return { type : 'ERR', error : raise(error) } }
 function ReThrowError (error : ERROR)  : Err { return { type : 'ERR', error } }
 
-function EvalExpr (expr : TERM, env : ENV, kont : Kontinue) : EvalExpr {
+function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {
     return { type : 'EVAL_EXPR', expr, env, kont }
 }
 
-function EvalHead (args : LIST, env : ENV, kont : Kontinue) : EvalHead {
+function EvalHead (args : LIST, env : Env, kont : Kontinue) : EvalHead {
     return { type : 'EVAL_HEAD', args, env, kont }
 }
 
-function EvalArgs (args : LIST, done : TERM[], env : ENV, kont : Kontinue) : EvalArgs {
+function EvalArgs (args : LIST, done : TERM[], env : Env, kont : Kontinue) : EvalArgs {
     return { type : 'EVAL_ARGS', args, done, env, kont }
 }
 
-function Apply (call : CALLABLE, env : ENV, kont : Kontinue) : Apply {
+function Apply (call : CALLABLE, env : Env, kont : Kontinue) : Apply {
     return { type : 'APPLY', call, env, kont }
 }
 
-function Return (value : TERM, env : ENV, kont : Kontinue) : Return {
+function Return (value : TERM, env : Env, kont : Kontinue) : Return {
     return { type  : 'RETURN', value, env, kont }
 }
 
-function Define (name : Sym, env : ENV, kont : Kontinue) : Define {
+function Define (name : Sym, env : Env, kont : Kontinue) : Define {
     return { type  : 'DEFINE', name, env, kont }
 }
 
-function Cond (if_true : TERM, if_false : TERM, env : ENV, kont : Kontinue) : Cond {
+function Cond (if_true : TERM, if_false : TERM, env : Env, kont : Kontinue) : Cond {
     return { type : 'COND', if_true, if_false, env, kont }
 }
 
-function Drop (env : ENV, kont : Kontinue) : Drop {
+function Drop (env : Env, kont : Kontinue) : Drop {
     return { type : 'DROP', env, kont }
 }
 
@@ -431,7 +433,7 @@ function Halt () : Halt {
     return { type : 'HALT', results : [] }
 }
 
-function ScopeExit (env : ENV, kont : Kontinue) : ScopeExit {
+function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
     if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont);
     return { type : 'SCOPE_EXIT', env, kont }
 }
@@ -440,9 +442,8 @@ function ScopeExit (env : ENV, kont : Kontinue) : ScopeExit {
 
 let steps = 0;
 
-function run (exprs : TERM[], env : ENV, quota : number = 100_000) : Kontinue {
+function run (exprs : TERM[], env : Env, quota : number = 100_000) : Kontinue {
     let to_run = [];
-    let to_fix = [];
     for (const expr of exprs) {
         if (isCons(expr)) {
             let head = car(expr);
@@ -454,7 +455,6 @@ function run (exprs : TERM[], env : ENV, quota : number = 100_000) : Kontinue {
                 if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
                 if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
                 env = bind( name, lambda( params, body, env ), env );
-                to_fix.push(env.first);
             } else {
                 to_run.push(expr);
             }
@@ -462,13 +462,10 @@ function run (exprs : TERM[], env : ENV, quota : number = 100_000) : Kontinue {
             to_run.push(expr);
         }
     }
-
-    to_fix.forEach((b) => { (b.value as Lambda).env = env })
-
-    return step(to_run, env, quota);
+    return step(to_run, newEnv(env), quota);
 }
 
-function step (exprs : TERM[], env : ENV, quota : number) : Kontinue {
+function step (exprs : TERM[], env : Env, quota : number) : Kontinue {
     if (exprs.length == 0) return Halt();
 
     let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
@@ -577,17 +574,17 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
         let value = stack.pop();
         if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`);
         let local = bind( kont.name, value, kont.env );
-        // NOTE:
-        // This is a bit gross, but works for now
-        // push the new binding forward ...
-        let k = kont.kont;
-        // but stop when
-        //  - we reach something without a kont (HALT, ERR)
-        //  - we reach a scope exit barrier
-        while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
-            k.env = local;
-            k     = k.kont;
-        }
+        //// NOTE:
+        //// This is a bit gross, but works for now
+        //// push the new binding forward ...
+        //let k = kont.kont;
+        //// but stop when
+        ////  - we reach something without a kont (HALT, ERR)
+        ////  - we reach a scope exit barrier
+        //while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
+        //    k.env = local;
+        //    k     = k.kont;
+        //}
         return kont.kont;
     case 'COND':
         let test = stack.pop();
@@ -667,6 +664,12 @@ let test_source = `
 
     (defun make-adder (n) (lambda (x) (+ x n)))
 
+    (let thirty 30)
+
+    (let get-thirty (lambda () thirty))
+
+    (let thur-tee (+ 10 20))
+
     (list
         (even? 10)
         (odd? 10)
@@ -679,8 +682,11 @@ let test_source = `
         (length
             (list
             30
+            thirty
             (+ 10 20)
+            thur-tee
             (+ (* 2 5) 20)
+            (get-thirty)
             (+ 10 (* 4 5))
             (+ (* 2 5) (* 4 5))
             (+ (* 2 (- 9 4)) (* 4 5))
