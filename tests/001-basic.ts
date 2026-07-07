@@ -608,7 +608,7 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
 
 let env = initalizeEnv();
 
-let exprs = parse(`
+let test_source = `
 
     (defun adder (n m) (+ n m))
 
@@ -711,8 +711,12 @@ let exprs = parse(`
         "<- all done!"
     )
 
+`;
 
-`);
+let source = ``;
+
+
+let exprs = parse(source || test_source);
 
 console.log(exprs.map(pprint));
 
