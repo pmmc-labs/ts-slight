@@ -429,6 +429,7 @@ function Halt () : Halt {
 }
 
 function ScopeExit (env : ENV, kont : Kontinue) : ScopeExit {
+    if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont);
     return { type : 'SCOPE_EXIT', env, kont }
 }
 
@@ -474,6 +475,7 @@ function step (exprs : TERM[], env : ENV, quota : number) : Kontinue {
 
     STEP_LOOP:
     while (steps < quota) {
+        steps++;
         kont = kontinue(kont);
         switch (kont.type) {
         case 'HALT'   : break STEP_LOOP;
@@ -487,7 +489,6 @@ function step (exprs : TERM[], env : ENV, quota : number) : Kontinue {
 }
 
 function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
-    steps++;
     console.log(pprintKont(steps, kont, stack))
     switch (kont.type) {
     case 'EVAL_EXPR':
@@ -609,7 +610,7 @@ let env = initalizeEnv();
 
 let exprs = parse(`
 
-   (defun adder (n m) (+ n m))
+    (defun adder (n m) (+ n m))
 
     (defun double (n) (adder n n))
 
@@ -710,6 +711,7 @@ let exprs = parse(`
         "<- all done!"
     )
 
+
 `);
 
 console.log(exprs.map(pprint));
@@ -722,3 +724,8 @@ if (kont.type == 'HALT') {
     console.log(`Expected HALT, but got ${kont.type}`);
 }
 
+
+/*
+
+
+*/
