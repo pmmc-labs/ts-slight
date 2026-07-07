@@ -3,7 +3,7 @@ const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? tr
 
 // -----------------------------------------------------------------------------
 
-type TERM     = LIST | Sym | LITERAL | Bind | Env | CALLABLE | ERROR
+type TERM     = LIST | Sym | LITERAL | Env | CALLABLE | ERROR
 type LITERAL  = Bool | Str | Num
 type LIST     = Cons | Nil
 type CALLABLE = Lambda | Builtin
@@ -17,9 +17,7 @@ type Num      = { type : 'NUM',   value : number }
 type Bool     = { type : 'BOOL',  value : boolean }
 type ERROR    = { type : 'ERROR', error : any }
 
-type Bind     = { type : 'BIND', name : Sym, value : TERM }
 type Env      = { type : 'ENV', bindings : Map<string,TERM>, parent : Env | undefined }
-
 type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
@@ -40,9 +38,7 @@ function isError (t : TERM) : t is ERROR  { return t.type == 'ERROR' }
 
 function isBuiltin (t : TERM) : t is Builtin { return t.type == 'BIF' }
 function isLambda  (t : TERM) : t is Lambda  { return t.type == 'LAMBDA' }
-
-function isBind (t : TERM) : t is Bind { return t.type == 'BIND' }
-function isEnv  (t : TERM) : t is Env  { return t.type == 'ENV' }
+function isEnv     (t : TERM) : t is Env  { return t.type == 'ENV' }
 
 function isLiteral  (t : TERM) : t is LITERAL  { return isStr(t) || isNum(t) || isBool(t) }
 function isList     (t : TERM) : t is LIST     { return isNil(t) || isCons(t) }
@@ -140,8 +136,6 @@ function eq (lhs : TERM, rhs : TERM) : boolean {
     case isCons(lhs)    && isCons(rhs)    : return eq(lhs.first, rhs.first)   && eq(lhs.rest, rhs.rest);
     case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && eq(lhs.env, rhs.env);
     case isBuiltin(lhs) && isBuiltin(rhs) : return eq(lhs.params, rhs.params) && lhs.body === rhs.body && lhs.name == rhs.name;
-    case isBind(lhs)    && isBind(rhs)    : return eq(lhs.name, rhs.name)     && eq(lhs.value, rhs.value);
-    case isEnv(lhs)     && isEnv(rhs)     : false;
     default : return false;
     }
 }
@@ -156,7 +150,6 @@ function pprint (t : TERM) : string {
     case isCons(t)    : return `(${uncons(t).map(pprint).join(' ')})`
     case isLambda(t)  : return `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`
     case isBuiltin(t) : return `#<${t.name}>`
-    case isBind(t)    : return `(${pprint(t.name)} . ${pprint(t.value)})`
     case isEnv(t)     : return `{ ${t.bindings.toString()} ${t.parent ? pprint(t.parent) : '~'} }`
     case isError(t)   : return `E!${String(t.error)}`
     default : throw new Error(`WTF IS ${String(t)}`);
@@ -728,7 +721,9 @@ let exprs = parse(source || test_source);
 
 if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
+console.time('run');
 let kont = run(exprs, env);
+console.timeEnd('run');
 
 if (kont.type == 'HALT') {
     console.log(kont.results.map(pprint));
