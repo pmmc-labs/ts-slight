@@ -430,16 +430,19 @@ function step (exprs : TERM[], env : ENV) : TERM {
         kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
     }
 
+    STEP_LOOP:
     while (steps < 100_000) {
         kont = kontinue(kont);
-        if (kont.type == 'HALT') break;
-        if (kont.type == 'ERR') {
-            throw new Error(pprint(kont.error))
+        switch (kont.type) {
+        case 'HALT'   : break STEP_LOOP;
+        case 'ERR'    : throw new Error(pprint(kont.error));
+        case 'RETURN' :
+            kont = kontinue( kont.kont, kont.value );
         }
     }
 
     if (kont.type != 'HALT') {
-        throw new Error(`Expected HALT, but somehow did not`);
+        throw new Error(`Expected HALT, but somehow did not get it, hmmmm`);
     }
 
     return kont.results.pop()!;
@@ -539,7 +542,7 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
     case 'DROP':
         return kont.kont;
     case 'RETURN':
-        return kontinue(kont.kont, kont.value);
+        return kont;
     case 'HALT':
         let final_result = stack.pop();
         if (final_result !== undefined) {
