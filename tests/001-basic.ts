@@ -303,15 +303,19 @@ function initalizeEnv () : ENV {
 
 // -----------------------------------------------------------------------------
 
-type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM,                env : ENV, kont : Kontinue }
-type EvalHead  = { type : 'EVAL_HEAD', args : LIST,                env : ENV, kont : Kontinue }
-type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[], env : ENV, kont : Kontinue }
-type Apply     = { type : 'APPLY',     call : CALLABLE,            env : ENV, kont : Kontinue }
-type Drop      = { type : 'DROP', env : ENV, kont : Kontinue }
-type Return    = { type : 'RETURN', value : TERM, env : ENV, kont : Kontinue }
-type Define    = { type : 'DEFINE', name : Sym, value : TERM, env : ENV, kont : Kontinue }
-type Cond      = { type : 'COND', if_true : TERM, if_false : TERM, env : ENV, kont : Kontinue }
-type ScopeExit = { type : 'SCOPE_EXIT', env : ENV, kont : Kontinue }
+type Kontinuation = { env : ENV, kont : Kontinue }
+
+type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
+type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Kontinuation
+type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
+type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
+type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
+type Define    = { type : 'DEFINE',    name : Sym, value : TERM        } & Kontinuation
+type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
+
+type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
+type Drop      = { type : 'DROP'       } & Kontinuation
+
 type Halt      = { type : 'HALT', results : TERM[] }
 type Err       = { type : 'ERR',  error : ERROR }
 
@@ -347,6 +351,46 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     return `${stepsStr} | ${kontStr.padEnd(50, ' ')} := ${stack.map(pprint).join(', ')}`
 }
 
+function RaiseError   (error : string) : Err { return { type : 'ERR', error : raise(error) } }
+function ReThrowError (error : ERROR)  : Err { return { type : 'ERR', error } }
+
+function EvalExpr (expr : TERM, env : ENV, kont : Kontinue) : EvalExpr {
+    return { type : 'EVAL_EXPR', expr, env, kont }
+}
+
+function EvalHead (args : LIST, env : ENV, kont : Kontinue) : EvalHead {
+    return { type : 'EVAL_HEAD', args, env, kont }
+}
+
+function EvalArgs (args : LIST, done : TERM[], env : ENV, kont : Kontinue) : EvalArgs {
+    return { type : 'EVAL_ARGS', args, done, env, kont }
+}
+
+function Apply (call : CALLABLE, env : ENV, kont : Kontinue) : Apply {
+    return { type : 'APPLY', call, env, kont }
+}
+
+function Return (value : TERM, env : ENV, kont : Kontinue) : Return {
+    return { type  : 'RETURN', value, env, kont }
+}
+
+function Cond (if_true : TERM, if_false : TERM, env : ENV, kont : Kontinue) : Cond {
+    return { type : 'COND', if_true, if_false, env, kont }
+}
+
+function Drop (env : ENV, kont : Kontinue) : Drop {
+    return { type : 'DROP', env, kont }
+}
+
+function Halt () : Halt {
+    return { type : 'HALT', results : [] }
+}
+
+function ScopeExit (env : ENV, kont : Kontinue) : ScopeExit {
+    return { type : 'SCOPE_EXIT', env, kont }
+}
+
+// -----------------------------------------------------------------------------
 
 let steps = 0;
 
@@ -381,24 +425,9 @@ function run (exprs : TERM[], env : ENV) : TERM {
 function step (exprs : TERM[], env : ENV) : TERM {
     if (exprs.length == 0) return nil;
 
-    let kont : Kontinue = {
-        type : 'EVAL_EXPR',
-        expr : exprs.pop()!,
-        env  : env,
-        kont : { type : 'HALT', results : [] }
-    };
-
+    let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt() );
     while (exprs.length > 0) {
-        kont = {
-            type : 'EVAL_EXPR',
-            expr : exprs.pop()!,
-            env  : env,
-            kont : {
-                type : 'DROP',
-                env  : env,
-                kont : kont,
-            }
-        }
+        kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
     }
 
     while (steps < 100_000) {
@@ -429,157 +458,83 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
                 switch (head.ident) {
                 case 'if' :
                     let [ cond, if_true, if_false ] = uncons(tail);
-                    if (cond     == undefined) return { type : 'ERR', error : raise(`Expected conf for COND, got undefined`) };
-                    if (if_true  == undefined) return { type : 'ERR', error : raise(`Expected if-true for COND, got undefined`) };
-                    if (if_false == undefined) return { type : 'ERR', error : raise(`Expected if-false for COND, got undefined`) };
-                    return {
-                        type : 'EVAL_EXPR',
-                        expr : cond,
-                        env  : kont.env,
-                        kont : {
-                            type : 'COND',
-                            if_true,
-                            if_false,
-                            env  : kont.env,
-                            kont : kont.kont
-                        }
-                    }
+                    if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`);
+                    if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`);
+                    if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`);
+                    return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
                 case 'do' :
                     let exprs = uncons(tail);
-                    let next : Kontinue = {
-                        type : 'EVAL_EXPR',
-                        expr : exprs.pop()!,
-                        env  : kont.env,
-                        kont : kont.kont
-                    };
+                    let next = EvalExpr( exprs.pop()!, kont.env, kont.kont );
                     while (exprs.length > 0) {
-                        next = {
-                            type : 'EVAL_EXPR',
-                            expr : exprs.pop()!,
-                            env  : kont.env,
-                            kont : {
-                                type : 'DROP',
-                                env  : kont.env,
-                                kont : next,
-                            }
-                        }
+                        next = EvalExpr( exprs.pop()!, kont.env, Drop( kont.env, next ) )
                     }
                     return next;
                 case 'lambda' :
                     let params = car(tail);
                     let body   = cadr(tail);
                     if (!isList(params)) {
-                        return { type : 'ERR', error : raise(`Params should be a list, not ${pprint(params)} in lambda`) }
+                        return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`)
                     }
-                    return {
-                        type  : 'RETURN',
-                        value : lambda( params, body, kont.env ),
-                        env   : kont.env,
-                        kont  : kont.kont
-                    }
+                    return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
                 }
             }
-            return {
-                type : 'EVAL_EXPR',
-                expr : head,
-                env  : kont.env,
-                kont : {
-                    type : 'EVAL_HEAD',
-                    args : tail,
-                    env  : kont.env,
-                    kont : kont.kont
-                }
-            }
+            return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
         case isSym(kont.expr):
             let found = lookup(kont.expr, kont.env);
             if (isNil(found)) {
-                return { type : 'ERR', error : raise(`Could not find ${pprint(kont.expr)} in Env`) }
+                return RaiseError(`Could not find ${pprint(kont.expr)} in Env`)
             } else {
-                return { type : 'RETURN', value : found, env : kont.env, kont : kont.kont };
+                return Return( found, kont.env, kont.kont );
             }
         default :
-            return { type : 'RETURN', value : kont.expr, env : kont.env, kont : kont.kont };
+            return Return( kont.expr, kont.env, kont.kont );
         }
     case 'EVAL_HEAD':
         let call = stack.pop();
         if (call == undefined) {
-            return { type : 'ERR', error : raise(`Expected call returned to EVAL_HEAD, got undefined`) }
+            return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`)
         }
 
         if (!isCallable(call)) {
-            return { type : 'ERR', error : raise(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`) }
+            return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`)
         }
 
-        return {
-            type : 'EVAL_ARGS',
-            args : kont.args,
-            done : [],
-            env  : kont.env,
-            kont : {
-                type : 'APPLY',
-                call : call,
-                env  : kont.env,
-                kont : kont.kont
-            }
-        }
+        return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
     case 'EVAL_ARGS':
         let done = kont.done;
         if (stack.length > 0) {
             let next_arg = stack.pop();
             if (next_arg == undefined) {
-                return { type : 'ERR', error : raise(`Expected next_arg returned to EVAL_ARGS, got undefined`) }
+                return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`)
             }
             done.push(next_arg);
         }
 
         if (isNil(kont.args)) {
-            return { type : 'RETURN', value : list( ...done ), env : kont.env, kont : kont.kont }
+            return Return( list( ...done ), kont.env, kont.kont )
         }
-        return {
-            type : 'EVAL_EXPR',
-            expr : car(kont.args),
-            env  : kont.env,
-            kont : {
-                type  : 'EVAL_ARGS',
-                args  : cdr(kont.args),
-                done  : done,
-                env   : kont.env,
-                kont  : kont.kont,
-            }
-        }
+        return EvalExpr( car(kont.args), kont.env,
+                    EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
     case 'APPLY':
         let args = stack.pop();
         if (args == undefined) {
-            return { type : 'ERR', error : raise(`Expected args returned to APPLY, got undefined`) }
+            return RaiseError(`Expected args returned to APPLY, got undefined`)
         }
 
         if (!isList(args)) {
-            return { type : 'ERR', error : raise(`Expected args LIST returned to APPLY, got something else`) }
+            return RaiseError(`Expected args LIST returned to APPLY, got something else`)
         }
 
         switch (true) {
         case isLambda(kont.call):
             let local = bindParams( kont.call.params, args, kont.call.env );
-            if (isError(local)) return { type : 'ERR', error : local };
-            return {
-                type : 'EVAL_EXPR',
-                expr : kont.call.body,
-                env  : local,
-                kont : {
-                    type : 'SCOPE_EXIT',
-                    env  : kont.env,
-                    kont : kont.kont
-                }
-            }
+            if (isError(local)) return ReThrowError(local);
+
+            return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
         case isBuiltin(kont.call):
-            return {
-                type : 'RETURN',
-                value : kont.call.body(args),
-                env   : kont.env,
-                kont  : kont.kont
-            }
+            return Return( kont.call.body(args), kont.env, kont.kont )
         default:
-            throw new Error("CANNOT CALL THAT!");
+            return RaiseError(`Expected Lambda or Builtin in APPLY`)
         }
     case 'DROP':
         return kont.kont;
@@ -596,64 +551,21 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
     case 'COND':
         let test = stack.pop();
         if (test == undefined) {
-            return { type : 'ERR', error : raise(`Expected Bool returned to COND, got undefined`) }
+            return RaiseError(`Expected Bool returned to COND, got undefined`)
         }
         if (isBool(test) && isTrue(test)) {
-            return { type : 'EVAL_EXPR', expr : kont.if_true, env : kont.env, kont : kont.kont }
+            return EvalExpr( kont.if_true, kont.env, kont.kont )
         } else {
-            return { type : 'EVAL_EXPR', expr : kont.if_false, env : kont.env, kont : kont.kont }
+            return EvalExpr( kont.if_false, kont.env, kont.kont )
         }
     case 'SCOPE_EXIT':
         let returned = stack.pop();
         if (returned == undefined) {
-            return { type : 'ERR', error : raise(`Expected result returned to SCOPE_EXIT, got undefined`) }
+            return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`)
         }
-        return {
-            type : 'RETURN',
-            value : returned,
-            env   : kont.env,
-            kont  : kont.kont
-        }
+        return Return( returned, kont.env, kont.kont )
     default:
-        throw new Error("WTF!")
-    }
-}
-
-// -----------------------------------------------------------------------------
-// simple tree walker
-// -----------------------------------------------------------------------------
-
-function evaluate (expr : TERM, env : ENV) : TERM {
-    switch (true) {
-    case isError(expr) : throw new Error(pprint(expr));
-    case isSym(expr)   :
-        let found = lookup(expr, env);
-        if (isNil(found)) {
-            return evaluate(raise(`Could not find ${pprint(expr)} in Env`), env)
-        } else {
-            return found;
-        }
-    case isCons(expr)  :
-        return application( evaluate( car(expr), env ), evaluateArgs( cdr(expr), env ), env );
-    default :
-        return expr;
-    }
-}
-
-function evaluateArgs (args : LIST, env : ENV) : LIST {
-    if (isNil(args)) return args;
-    return cons( evaluate( car(args), env ), evaluateArgs( cdr(args), env ) );
-}
-
-function application (call : TERM, args : LIST, env : ENV) : TERM {
-    switch (true) {
-    case isBuiltin(call) : return call.body(args);
-    case isLambda(call)  :
-        let local = bindParams(call.params, args, call.env);
-        if (isError(local)) return evaluate( local, env );
-        return evaluate(call.body, local);
-    default :
-        return raise(`Cannot call a ${pprint(call)} only CALLABLE things`);
+        return RaiseError(`Unknown Kontinue`);
     }
 }
 
