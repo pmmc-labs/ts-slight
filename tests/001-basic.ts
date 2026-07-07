@@ -310,7 +310,6 @@ type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Konti
 type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
 type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
 type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
-type Define    = { type : 'DEFINE',    name : Sym, value : TERM        } & Kontinuation
 type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
 
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
@@ -328,7 +327,6 @@ type Kontinue =
     | Return
     | Halt
     | Err
-    | Define
     | Cond
     | ScopeExit
 
@@ -342,7 +340,6 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`; break;
     case 'DROP'       : break;
     case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : break;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'HALT'       : break;
@@ -475,64 +472,41 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
                 case 'lambda' :
                     let params = car(tail);
                     let body   = cadr(tail);
-                    if (!isList(params)) {
-                        return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`)
-                    }
+                    if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`);
                     return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
                 }
             }
             return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
         case isSym(kont.expr):
             let found = lookup(kont.expr, kont.env);
-            if (isNil(found)) {
-                return RaiseError(`Could not find ${pprint(kont.expr)} in Env`)
-            } else {
-                return Return( found, kont.env, kont.kont );
-            }
+            if (isNil(found)) return RaiseError(`Could not find ${pprint(kont.expr)} in Env`);
+            return Return( found, kont.env, kont.kont );
         default :
             return Return( kont.expr, kont.env, kont.kont );
         }
     case 'EVAL_HEAD':
         let call = stack.pop();
-        if (call == undefined) {
-            return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`)
-        }
-
-        if (!isCallable(call)) {
-            return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`)
-        }
-
+        if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`);
+        if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`);
         return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
     case 'EVAL_ARGS':
         let done = kont.done;
         if (stack.length > 0) {
             let next_arg = stack.pop();
-            if (next_arg == undefined) {
-                return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`)
-            }
+            if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`);
             done.push(next_arg);
         }
-
-        if (isNil(kont.args)) {
-            return Return( list( ...done ), kont.env, kont.kont )
-        }
-        return EvalExpr( car(kont.args), kont.env,
-                    EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
+        if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
+        return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
     case 'APPLY':
         let args = stack.pop();
-        if (args == undefined) {
-            return RaiseError(`Expected args returned to APPLY, got undefined`)
-        }
-
-        if (!isList(args)) {
-            return RaiseError(`Expected args LIST returned to APPLY, got something else`)
-        }
+        if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`);
+        if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`);
 
         switch (true) {
         case isLambda(kont.call):
             let local = bindParams( kont.call.params, args, kont.call.env );
             if (isError(local)) return ReThrowError(local);
-
             return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
         case isBuiltin(kont.call):
             return Return( kont.call.body(args), kont.env, kont.kont )
@@ -545,17 +519,12 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
         return kont;
     case 'HALT':
         let final_result = stack.pop();
-        if (final_result !== undefined) {
-            kont.results.push(final_result)
-        }
+        if (final_result !== undefined) kont.results.push(final_result);
         return kont;
-    case 'DEFINE':
-        throw new Error("TODO");
     case 'COND':
         let test = stack.pop();
-        if (test == undefined) {
-            return RaiseError(`Expected Bool returned to COND, got undefined`)
-        }
+        if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`);
+
         if (isBool(test) && isTrue(test)) {
             return EvalExpr( kont.if_true, kont.env, kont.kont )
         } else {
@@ -563,9 +532,7 @@ function kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
         }
     case 'SCOPE_EXIT':
         let returned = stack.pop();
-        if (returned == undefined) {
-            return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`)
-        }
+        if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`);
         return Return( returned, kont.env, kont.kont )
     default:
         return RaiseError(`Unknown Kontinue`);
