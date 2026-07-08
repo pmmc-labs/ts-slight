@@ -357,7 +357,6 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Yield     = { type : 'YIELD'      } & Kontinuation
-type Block     = { type : 'BLOCK'      } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
 type Halt      = { type : 'HALT', results : TERM[], env : Env }
 
@@ -369,7 +368,6 @@ type Kontinue =
     | Drop
     | Return
     | Yield
-    | Block
     | Halt
     | Err
     | Define
@@ -390,7 +388,6 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'YIELD'      : break;
-    case 'BLOCK'      : break;
     case 'HALT'       : break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
@@ -441,10 +438,6 @@ function Yield (env : Env, kont : Kontinue) : Yield {
     return { type : 'YIELD', env, kont }
 }
 
-function Block (env : Env, kont : Kontinue) : Block {
-    return { type : 'BLOCK', env, kont }
-}
-
 function Halt (env : Env) : Halt {
     return { type : 'HALT', results : [], env }
 }
@@ -456,15 +449,23 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 // -----------------------------------------------------------------------------
 
+type ProcessState = 'BLOCKED' | 'READY';
+type Process = [ Kontinue, Num, ProcessState ]
+
+function spawnProcess (kont : Kontinue, pid : Num, state : ProcessState) : Process {
+    return [ kont, pid, state ]
+}
+
 class Strand {
-    public steps   : number     = 0;
-    public quota   : number     = 100_000;
-    public queue   : Kontinue[] = [];
-    public blocked : Kontinue[] = [];
-    public done    : Halt[]     = [];
-    public pid_seq : number = 0;
+    public steps : number    = 0;
+    public quota : number    = 100_000;
+    public queue : Process[] = [];
+    public done  : Halt[]    = [];
+
+    private pid_seq  : number = 0;
 
     run (exprs : TERM[], env : Env) : Halt[] {
+
         let to_run = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -488,23 +489,25 @@ class Strand {
         let init_pid = this.prepare(to_run, newEnv(env));
 
         while (this.queue.length > 0 && this.steps < this.quota) {
-            let next = this.queue.pop()!;
-            if (DEBUG) {
-                console.log(`>>>>> : PID(${ pprint(lookup(sym('$$'), next.env)) })`);
-            }
-            let kont = this.step(next);
-            switch (kont.type) {
-            case 'HALT'  :
-                this.done.push(kont);
+            let proc = this.queue.pop()!;
+            let [ kont, pid, state ] = proc;
+            if (DEBUG) console.log(`>>>>> : PID(${ pprint(pid) }) is ${state}`);
+            switch (state) {
+            case 'BLOCKED':
+                this.queue.unshift(proc);
                 break;
-            case 'YIELD' :
-                this.queue.unshift(kont.kont);
-                break;
-            case 'BLOCK' :
-                this.queue.unshift(kont.kont);
-                break;
-            default:
-                throw new Error(`Expected either HALT/YIELD/BLOCK, got ${kont.type}`);
+            case 'READY':
+                kont = this.step(kont);
+                switch (kont.type) {
+                case 'HALT'  :
+                    this.done.push(kont);
+                    break;
+                case 'YIELD' :
+                    this.queue.unshift([ kont.kont, pid, 'READY' ]);
+                    break;
+                default:
+                    throw new Error(`Expected either HALT/YIELD, got ${kont.type}`);
+                }
             }
         }
 
@@ -520,7 +523,7 @@ class Strand {
             kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
         }
 
-        this.queue.push( kont );
+        this.queue.push( spawnProcess(kont, pid, 'READY') );
         return pid
     }
 
@@ -627,8 +630,6 @@ class Strand {
         case 'DROP':
             return kont.kont;
         case 'YIELD':
-            return kont;
-        case 'BLOCK':
             return kont;
         case 'RETURN':
             return kont;
@@ -778,16 +779,7 @@ let test_source = `
 
 `;
 
-let source = `
-
-    (let pid (fork (do
-            (pprint (list 'in-fork $$))
-            (yield (pprint (list 'again-in-fork $$)))
-        )))
-    (pprint (list 'in-root-child-pid pid))
-    (pprint (list 'in-root $$))
-
-`;
+let source = ``;
 
 let exprs = parse(source || test_source);
 
@@ -803,6 +795,14 @@ for (const kont of konts) {
 
 
 /*
+
+
+    (let pid (fork (do
+            (pprint (list 'in-fork $$))
+            (yield (pprint (list 'in-fork $$)))
+        )))
+    (pprint (list 'in-root-child-pid pid))
+    (pprint (list 'in-root $$))
 
 (defun for-loop (init test next body)
     (if (test (init))
