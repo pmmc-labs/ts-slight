@@ -357,6 +357,7 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Yield     = { type : 'YIELD'      } & Kontinuation
+type Block     = { type : 'BLOCK'      } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
 type Halt      = { type : 'HALT', results : TERM[], env : Env }
 
@@ -368,6 +369,7 @@ type Kontinue =
     | Drop
     | Return
     | Yield
+    | Block
     | Halt
     | Err
     | Define
@@ -388,6 +390,7 @@ function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'YIELD'      : break;
+    case 'BLOCK'      : break;
     case 'HALT'       : break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
@@ -438,6 +441,10 @@ function Yield (env : Env, kont : Kontinue) : Yield {
     return { type : 'YIELD', env, kont }
 }
 
+function Block (env : Env, kont : Kontinue) : Block {
+    return { type : 'BLOCK', env, kont }
+}
+
 function Halt (env : Env) : Halt {
     return { type : 'HALT', results : [], env }
 }
@@ -450,15 +457,14 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 // -----------------------------------------------------------------------------
 
 class Strand {
-    public steps : number     = 0;
-    public quota : number     = 100_000;
-    public queue : Kontinue[] = [];
-    public done  : Halt[]     = [];
-
-    private pid_seq  : number = 0;
+    public steps   : number     = 0;
+    public quota   : number     = 100_000;
+    public queue   : Kontinue[] = [];
+    public blocked : Kontinue[] = [];
+    public done    : Halt[]     = [];
+    public pid_seq : number = 0;
 
     run (exprs : TERM[], env : Env) : Halt[] {
-
         let to_run = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -494,8 +500,11 @@ class Strand {
             case 'YIELD' :
                 this.queue.unshift(kont.kont);
                 break;
+            case 'BLOCK' :
+                this.queue.unshift(kont.kont);
+                break;
             default:
-                throw new Error(`Expected either HALT/YIELD, got ${kont.type}`);
+                throw new Error(`Expected either HALT/YIELD/BLOCK, got ${kont.type}`);
             }
         }
 
@@ -619,6 +628,8 @@ class Strand {
             return kont.kont;
         case 'YIELD':
             return kont;
+        case 'BLOCK':
+            return kont;
         case 'RETURN':
             return kont;
         case 'HALT':
@@ -629,17 +640,6 @@ class Strand {
             let value = stack.pop();
             if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
             let local = bind( kont.name, value, kont.env );
-            //// NOTE:
-            //// This is a bit gross, but works for now
-            //// push the new binding forward ...
-            //let k = kont.kont;
-            //// but stop when
-            ////  - we reach something without a kont (HALT, ERR)
-            ////  - we reach a scope exit barrier
-            //while (k.type != 'HALT' && k.type != 'ERR' && k.type != 'SCOPE_EXIT') {
-            //    k.env = local;
-            //    k     = k.kont;
-            //}
             return kont.kont;
         case 'COND':
             let test = stack.pop();
