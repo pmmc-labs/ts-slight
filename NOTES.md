@@ -38,6 +38,23 @@ returns them as a list. (Similar to the `collect` pattern with JS promises).
 
 ```
 
+This is very limiting, so it probably makes sense to add some sort of 
+communication machinery to communicate between the forked processes, but 
+not going to a full on Actor model. 
+
+Here are some thoughts ...
+
+### Channels
+
+Channels can act like pipes between processes, nothing too fancy here. But 
+do I actually need this abstraction along with actors??
+
+### IVars & MVars
+
+Recently read a book on Concurrent ML and got introduced to these two 
+synronization primatives, which are interesting, but maybe not appropriate??
+
+
 ## Pub/Sub
 
 A Producer/Consumer mutually recursive loop, but here modeled as message 
@@ -130,3 +147,6 @@ Scheme).
 (schedule/send $ping 'STOP :after 10s)
 
 ```
+
+
+

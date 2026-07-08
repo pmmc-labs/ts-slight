@@ -374,24 +374,23 @@ type Kontinue =
     | Cond
     | ScopeExit
 
-function pprintKont (steps : number, kont : Kontinue, stack : TERM[]) : string {
-    let stepsStr = steps.toString().padStart(5, '0');
-    let kontStr  = kont.type.padEnd(11, " ");
+function pprintKont (kont : Kontinue) : string {
+    let kontStr  = kont.type.padStart(11, " ");
     switch (kont.type) {
-    case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`; break;
-    case 'EVAL_HEAD'  : kontStr += ` ${pprint(kont.args)}`; break;
-    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
-    case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`; break;
+    case 'EVAL_EXPR'  : kontStr += ` =: ${pprint(kont.expr)}`; break;
+    case 'EVAL_HEAD'  : kontStr += ` =: ${pprint(kont.args)}`; break;
+    case 'EVAL_ARGS'  : kontStr += ` =: ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
+    case 'APPLY'      : kontStr += ` =: ${pprint(kont.call)}`; break;
+    case 'RETURN'     : kontStr += ` =: ${pprint(kont.value)}`; break;
+    case 'DEFINE'     : kontStr += ` =: ${pprint(kont.name)}`; break;;
     case 'DROP'       : break;
-    case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`; break;;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'YIELD'      : break;
     case 'HALT'       : break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
-    return `${stepsStr} | ${kontStr.padEnd(50, ' ')} := ${stack.map(pprint).join(', ')}`
+    return kontStr;
 }
 
 function ThrowError (error : ERROR, kont : Kontinue)  : Err {
@@ -449,23 +448,58 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 // -----------------------------------------------------------------------------
 
-type ProcessState = 'BLOCKED' | 'READY';
-type Process = [ Kontinue, Num, ProcessState ]
-
-function spawnProcess (kont : Kontinue, pid : Num, state : ProcessState) : Process {
-    return [ kont, pid, state ]
-}
+type Process = { pid : Num, kont : Kontinue, steps : number }
 
 class Strand {
-    public steps : number    = 0;
-    public quota : number    = 100_000;
-    public queue : Process[] = [];
-    public done  : Halt[]    = [];
+    public running : Process[] = [];
+    public halted  : Process[] = [];
+    public blocked : Map<number,Process> = new Map<number,Process>();
 
-    private pid_seq  : number = 0;
+    private PID_SEQ = 0;
+    private DEFAULT_QUOTA = 100_000;
 
-    run (exprs : TERM[], env : Env) : Halt[] {
+    private nextPID () : Num {
+        return num(++this.PID_SEQ);
+    }
 
+    private haltProcess (proc : Process) : void {
+        this.halted.push( proc );
+    }
+
+    private enqueueProcess (proc : Process) : void {
+        this.running.unshift(proc);
+    }
+
+    private blockProcess (proc : Process) : void {
+        this.blocked.set( proc.pid.value, proc );
+    }
+
+    private yieldProcess (proc : Process) : void {
+        if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
+        proc.kont = proc.kont.kont;
+        this.enqueueProcess(proc);
+    }
+
+    private unblockProcess (pid : Num) : void {
+        let proc = this.blocked.get( pid.value );
+        if (proc === undefined) throw new Error(`Could not find PID(${pprint(pid)}) to unblock`);
+        this.blocked.delete( pid.value );
+        this.enqueueProcess(proc);
+    }
+
+    private spawnProcess (exprs : TERM[], env : Env) : Num {
+        let pid   = this.nextPID();
+        let local = bind( sym('$$'), pid, newEnv( env ) );
+
+        let kont : Kontinue = EvalExpr( exprs.pop()!, local, Halt( local ) );
+        while (exprs.length > 0) {
+            kont = EvalExpr( exprs.pop()!, local, Drop( local, kont ) );
+        }
+        this.enqueueProcess({ pid, kont, steps : 0 });
+        return pid;
+    }
+
+    run (exprs : TERM[], env : Env) : Process[] {
         let to_run = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -486,71 +520,57 @@ class Strand {
             }
         }
 
-        let init_pid = this.prepare(to_run, newEnv(env));
+        let init_pid = this.spawnProcess( to_run, env );
 
-        while (this.queue.length > 0 && this.steps < this.quota) {
-            let proc = this.queue.pop()!;
-            let [ kont, pid, state ] = proc;
-            if (DEBUG) console.log(`>>>>> : PID(${ pprint(pid) }) is ${state}`);
-            switch (state) {
-            case 'BLOCKED':
-                this.queue.unshift(proc);
+        while (this.running.length > 0) {
+            let proc = this.running.pop()!;
+            if (DEBUG) console.log(`>>>> : Switching to PID(${ pprint(proc.pid) })`);
+            proc = this.step(proc, this.DEFAULT_QUOTA);
+            switch (proc.kont.type) {
+            case 'HALT'  :
+                this.haltProcess(proc);
                 break;
-            case 'READY':
-                kont = this.step(kont);
-                switch (kont.type) {
-                case 'HALT'  :
-                    this.done.push(kont);
-                    break;
-                case 'YIELD' :
-                    this.queue.unshift([ kont.kont, pid, 'READY' ]);
-                    break;
-                default:
-                    throw new Error(`Expected either HALT/YIELD, got ${kont.type}`);
-                }
+            case 'YIELD' :
+                this.yieldProcess(proc);
+                break;
+            default:
+                if (DEBUG) console.log(`!!!! : Quota exhausted for PID(${ pprint(proc.pid) }), refilling`);
+                this.enqueueProcess(proc);
             }
         }
 
-        return this.done;
+        return this.halted;
     }
 
-    prepare (exprs : TERM[], env : Env) : Num {
-        let pid = num(++this.pid_seq);
-        env = bind( sym('$$'), pid, env );
-
-        let kont : Kontinue = EvalExpr( exprs.pop()!, env, Halt( env ) );
-        while (exprs.length > 0) {
-            kont = EvalExpr( exprs.pop()!, env, Drop( env, kont ) );
-        }
-
-        this.queue.push( spawnProcess(kont, pid, 'READY') );
-        return pid
-    }
-
-    resume (kont : Kontinue) : Kontinue {
-        if (kont.type != 'YIELD') throw new Error(`You can only resume from a Yield, not ${kont.type}`);
-        return this.step(kont.kont);
-    }
-
-    step (kont : Kontinue) : Kontinue {
-        while (this.steps < this.quota) {
-            this.steps++;
-            kont = this.kontinue(kont);
-            switch (kont.type) {
+    step (proc : Process, quota : number) : Process {
+        while (quota > 0) {
+            proc.kont = this.kontinue(proc);
+            quota--;
+            switch (proc.kont.type) {
             case 'HALT'   :
-            case 'YIELD'  : return kont;
-            case 'ERR'    : throw new Error(pprint(kont.error));
+            case 'YIELD'  : return proc;
+            case 'ERR'    : throw new Error(pprint(proc.kont.error));
             case 'RETURN' :
-                this.steps++;
-                kont = this.kontinue( kont.kont, kont.value );
+                let value = proc.kont.value;
+                proc.kont = proc.kont.kont;
+                proc.kont = this.kontinue( proc, value );
+                quota--;
                 break;
             }
         }
-        return kont;
+        return proc;
     }
 
-    kontinue (kont : Kontinue, ...stack : TERM[]) : Kontinue {
-        if (DEBUG) console.log(pprintKont(this.steps, kont, stack));
+    kontinue (proc : Process, ...stack : TERM[]) : Kontinue {
+        proc.steps++;
+        let kont = proc.kont;
+        if (DEBUG) {
+            console.log([
+                proc.pid.value.toString().padStart(4, '0'),
+                proc.steps.toString().padStart(6, '0'),
+                pprintKont(proc.kont)
+            ].join(' | '));
+        }
         switch (kont.type) {
         case 'EVAL_EXPR':
             switch (true) {
@@ -587,7 +607,7 @@ class Strand {
                     case 'yield':
                         return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
                     case 'fork':
-                        return Yield( kont.env, Return( this.prepare([ car(tail) ], newEnv(kont.env)), kont.env, kont.kont ));
+                        return Yield( kont.env, Return( this.spawnProcess([ car(tail) ], kont.env), kont.env, kont.kont ));
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -786,12 +806,13 @@ let exprs = parse(source || test_source);
 if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
 let strand = new Strand();
+let halted = strand.run(exprs, env);
 
-let konts = strand.run(exprs, env);
-
-for (const kont of konts) {
-    console.log(kont.results.map(pprint));
+console.group('DONE:');
+for (const proc of halted) {
+    console.log((proc.kont as Halt).results.map(pprint));
 }
+console.groupEnd();
 
 
 /*
