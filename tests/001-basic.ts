@@ -477,7 +477,7 @@ class Strand {
     private yieldProcess (proc : Process) : void {
         if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
         proc.kont = proc.kont.kont;
-        this.enqueueProcess(proc);
+        this.halted.push(proc);
     }
 
     private unblockProcess (pid : Num) : void {
@@ -489,6 +489,13 @@ class Strand {
 
     private spawnProcess (exprs : TERM[], env : Env) : Num {
         let pid   = this.nextPID();
+
+        // NOTE:
+        // Because the binding is mutable in the Env, it
+        // is possible that a child process will see changes
+        // from the parent after being spawned. This is
+        // almost certainly not what I want, but it is
+        // okay for the moment until I decide how to solve it
         let local = bind( sym('$$'), pid, newEnv( env ) );
 
         let kont : Kontinue = EvalExpr( exprs.pop()!, local, Halt( local ) );
@@ -527,6 +534,7 @@ class Strand {
             if (DEBUG) console.log(`>>>> : Switching to PID(${ pprint(proc.pid) })`);
             proc = this.step(proc, this.DEFAULT_QUOTA);
             switch (proc.kont.type) {
+            case 'ERR'   :
             case 'HALT'  :
                 this.haltProcess(proc);
                 break;
@@ -539,6 +547,11 @@ class Strand {
             }
         }
 
+        // TODO - check for blocked processes here
+        // and do some kind of reporting, but in
+        // general this return type could be better
+        // it just makes things easier at the moment
+
         return this.halted;
     }
 
@@ -549,7 +562,6 @@ class Strand {
             switch (proc.kont.type) {
             case 'HALT'   :
             case 'YIELD'  : return proc;
-            case 'ERR'    : throw new Error(pprint(proc.kont.error));
             case 'RETURN' :
                 let value = proc.kont.value;
                 proc.kont = proc.kont.kont;
@@ -557,6 +569,7 @@ class Strand {
                 quota--;
                 break;
             }
+            if (proc.kont.type == 'ERR') return proc;
         }
         return proc;
     }
@@ -799,7 +812,10 @@ let test_source = `
 
 `;
 
-let source = ``;
+let source = `
+    ((lambda (a b) (+ a b)) 1 2 3)
+
+`;
 
 let exprs = parse(source || test_source);
 
@@ -810,7 +826,13 @@ let halted = strand.run(exprs, env);
 
 console.group('DONE:');
 for (const proc of halted) {
-    console.log((proc.kont as Halt).results.map(pprint));
+    if (proc.kont.type == 'HALT') {
+        console.log(proc.kont.results.map(pprint));
+    } else if (proc.kont.type == 'ERR') {
+        console.log(pprint(proc.kont.error));
+    } else {
+        console.log('WTF! is this?', proc);
+    }
 }
 console.groupEnd();
 
