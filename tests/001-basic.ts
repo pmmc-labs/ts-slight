@@ -465,11 +465,11 @@ type Process = { pid : Pid, kont : Kontinue, steps : number }
 
 class Strand {
     public running : Process[]             = [];
-    public halted  : Process[]             = [];
+    public halted  : Map<number,Process>   = new Map<number,Process>();
     public blocked : Map<number,Process[]> = new Map<number,Process[]>();
 
-    private PID_SEQ = 0;
-    private DEFAULT_QUOTA = 100_000;
+    private PID_SEQ       = 0;
+    private DEFAULT_QUOTA = 1000;
 
     private enqueueProcess (proc : Process) : void {
         this.running.unshift(proc);
@@ -478,37 +478,60 @@ class Strand {
     private yieldProcess (proc : Process) : void {
         if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
         if (proc.kont.result === undefined) throw new Error(`Expected result in YIELD!`);
+        if (DEBUG) console.log(`#### : Yielding ${pprint(proc.pid)}`);
         proc.kont = Return( proc.kont.result, proc.kont.kont.env, proc.kont.kont );
         this.enqueueProcess(proc);
     }
 
     private blockProcess (blocker_pid : Pid, blockee : Process) : void {
+        if (DEBUG) console.log(`#### : Blocking ${pprint(blockee.pid)} on ${pprint(blocker_pid)}`);
         if (this.blocked.has( blocker_pid.ident )) {
             let blockees = this.blocked.get( blocker_pid.ident )!;
             this.blocked.set( blocker_pid.ident, [ ...blockees, blockee ] );
         } else {
-            this.blocked.set( blocker_pid.ident, [ blockee ] );
+            if (this.halted.has( blocker_pid.ident )) {
+                if (DEBUG) console.log(`#### : Blocker ${pprint(blocker_pid)} is Halted, ....`);
+                let blocker = this.halted.get( blocker_pid.ident )!;
+                let kont    = blocker.kont;
+                if (kont.type != 'HALT') throw new Error(`The halted process should have HALT`);
+                let result  = kont.result;
+                if (result == undefined) throw new Error(`Got nothing back from blocked process, WTF!`);
+                let next = blockee.kont;
+                if (next.type == 'HALT') {
+                    next.result = result;
+                    blockee.kont = next;
+                } else {
+                    blockee.kont = Return( result, next.kont.env, next.kont );
+                }
+                if (DEBUG) console.log(`<<<< : Resuming ${pprint(blockee.pid)}`);
+                this.enqueueProcess(blockee);
+            } else {
+                this.blocked.set( blocker_pid.ident, [ blockee ] );
+            }
         }
     }
 
     private haltProcess (proc : Process) : void {
         if (proc.kont.type != 'HALT') throw new Error(`You can only halt on a HALT!`);
         if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
+        if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
         if (this.blocked.has( proc.pid.ident )) {
             let result = proc.kont.result;
             let procs  = this.blocked.get( proc.pid.ident )!;
             this.blocked.delete( proc.pid.ident );
+            if (DEBUG) console.log(`#### : ${pprint(proc.pid)} is blocking [ ${procs.map((p) => pprint(p.pid)).join(', ')} ]`);
             procs.forEach((p) => {
                 if (p.kont.type != 'HALT' && p.kont.type != 'ERR') {
                     p.kont = Return( result, p.kont.kont.env, p.kont.kont );
+                    if (DEBUG) console.log(`<<<< : Unblocking ${pprint(p.pid)}`);
                     this.enqueueProcess(p);
                 }
             });
         }
-        this.halted.push( proc );
+        this.halted.set( proc.pid.ident, proc );
     }
 
-    private spawnProcess (exprs : TERM[], env : Env) : Pid {
+    private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
         let pid = newPid(++this.PID_SEQ);
 
         // NOTE:
@@ -518,6 +541,10 @@ class Strand {
         // almost certainly not what I want, but it is
         // okay for the moment until I decide how to solve it
         let local = bind( sym('$$'), pid, newEnv( env ) );
+        if (ppid !== undefined) {
+            // bind the parent PID if we have one
+            local = bind( sym('$ppid'), ppid, local );
+        }
 
         let kont : Kontinue = EvalExpr( exprs.pop()!, local, Halt( local ) );
         while (exprs.length > 0) {
@@ -550,7 +577,7 @@ class Strand {
             }
         }
 
-        let init_pid = this.spawnProcess( to_run, env );
+        let init_pid = this.spawnProcess( to_run, env, undefined ); // no parent
 
         while (this.running.length > 0) {
             let proc = this.running.pop()!;
@@ -580,7 +607,7 @@ class Strand {
         // general this return type could be better
         // it just makes things easier at the moment
 
-        return this.halted;
+        return [ ...this.halted.values() ];
     }
 
     step (proc : Process, quota : number) : Process {
@@ -649,7 +676,7 @@ class Strand {
                     case 'yield':
                         return EvalExpr( car(tail), kont.env, Yield( kont.env, kont.kont ) );
                     case 'fork':
-                        return Return( this.spawnProcess([ car(tail) ], kont.env), kont.env, Yield( kont.env, kont.kont ) );
+                        return Return( this.spawnProcess([ car(tail) ], kont.env, proc.pid ), kont.env, Yield( kont.env, kont.kont ) );
                     case 'join':
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     }
@@ -706,7 +733,7 @@ class Strand {
         case 'DEFINE':
             if (returned == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
             let local = bind( kont.name, returned, kont.env );
-            return kont.kont;
+            return Return( returned, kont.env, kont.kont );
         case 'COND':
             if (returned == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`, kont);
             if (!isBool(returned))     return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
@@ -790,6 +817,28 @@ let test_source = `
 
     (let thur-tee (+ 10 20))
 
+    (let pid (fork (
+        (join (fork (yield +)))
+        (join (fork (
+            (join (fork (yield +)))
+            (join (fork (yield 5)))
+            (join (fork (yield 5)))
+        )))
+        (join (fork (
+            (join (fork (yield *)))
+            (join (fork (
+                (join (fork (yield +)))
+                (join (fork (yield 2)))
+                (join (fork (
+                    (join (fork (yield +)))
+                    (join (fork (yield 1)))
+                    (join (fork (yield 1)))
+                )))
+            )))
+            (join (fork (yield 5)))
+        )))
+    )))
+
     (list
         (even? 10)
         (odd? 10)
@@ -801,40 +850,43 @@ let test_source = `
         (tail-call-demo 10)
         (length
             (list
-            30
-            thirty
-            (+ 10 20)
-            thur-tee
-            (+ (* 2 5) 20)
-            (get-thirty)
-            (+ 10 (* 4 5))
-            (+ (* 2 5) (* 4 5))
-            (+ (* 2 (- 9 4)) (* 4 5))
-            (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
-            (adder 10 20)
-            (adder (double 5) 20)
-            (adder 10 (* (double 2) 5))
-            (adder (fib 6) 22)
-            (adder (fib 8) (+ 1 (double 4)))
-            (- (fact 6) (+ (* (fact 3) 100) 90))
-            ((lambda (n m) (+ n m)) 10 20)
-            ((lambda (f n m) (f n m)) adder 10 20)
-            (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
-            (length (range 1 30))
-            (+ (length (range 1 10)) (length (range 1 (* 4 5))))
-            (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
-            (sum (list 4 (fib 8) (- (fact 3) 1)))
-            (+ (sum (range 0 (fib 6))) (- 2 8))
-            (sum (grep
-                    (lambda (x) (>= x 10))
-                    (list 0 2 10 4 7 20 3 1)))
-            (sum (map
-                    (lambda (x) (if (<= x 20) x 0))
-                    (list 100 25 10 411 75 20 35 1000)))
-            (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
-            (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
-            ((make-adder 10) 20)
-            ((make-adder 20) 10)
+                30
+                thirty
+                (+ 10 20)
+                thur-tee
+                (+ (* 2 5) 20)
+                (get-thirty)
+                (+ 10 (* 4 5))
+                (+ (* 2 5) (* 4 5))
+                (+ (* 2 (- 9 4)) (* 4 5))
+                (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
+                (adder 10 20)
+                (adder (double 5) 20)
+                (adder 10 (* (double 2) 5))
+                (adder (fib 6) 22)
+                (adder (fib 8) (+ 1 (double 4)))
+                (- (fact 6) (+ (* (fact 3) 100) 90))
+                ((lambda (n m) (+ n m)) 10 20)
+                ((lambda (f n m) (f n m)) adder 10 20)
+                (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
+                (length (range 1 30))
+                (+ (length (range 1 10)) (length (range 1 (* 4 5))))
+                (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
+                (sum (list 4 (fib 8) (- (fact 3) 1)))
+                (+ (sum (range 0 (fib 6))) (- 2 8))
+                (sum (grep
+                        (lambda (x) (>= x 10))
+                        (list 0 2 10 4 7 20 3 1)))
+                (sum (map
+                        (lambda (x) (if (<= x 20) x 0))
+                        (list 100 25 10 411 75 20 35 1000)))
+                (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
+                (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
+                ((make-adder 10) 20)
+                ((make-adder 20) 10)
+                (join (fork (+ 10 20)))
+                (join (fork (+ (yield 10) (yield 20))))
+                (join pid)
             )
         )
         "<- all done!"
@@ -842,13 +894,7 @@ let test_source = `
 
 `;
 
-let source = `
-
-
-    (let pid (fork (+ 10 20)))
-    (let result (join pid))
-
-`;
+let source = ``;
 
 let exprs = parse(source || test_source);
 
@@ -860,17 +906,21 @@ let halted = strand.run(exprs, env);
 console.group('DONE:');
 for (const proc of halted) {
     if (proc.kont.type == 'HALT') {
-        console.log('HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
+        console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
     } else if (proc.kont.type == 'ERR') {
-        console.log('ERRORD: ', pprint(proc.kont.error));
+        console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
     } else {
-        console.log('WTF! is this?', proc);
+        console.log(pprint(proc.pid), ' WTF! is this?', proc);
     }
 }
 console.groupEnd();
 
 
 /*
+
+    (let pid1 (fork (+ (yield 10) (yield 20))))
+    (let pid2 (fork (+ 10 20)))
+    (let result (+ (join pid1) (join pid2)))
 
 
     (let pid (fork (do
