@@ -165,7 +165,7 @@ function pprint (t : TERM) : string {
 // -----------------------------------------------------------------------------
 
 function parse (source : string) : TERM[] {
-    const lexer  = /"[^"]*"|\'|\(|\)|[^\s()']+/g;
+    const lexer  = /\;[^\n]*|"[^"]*"|\'|\(|\)|[^\s()']+/g;
 
     let tokens = source.match(lexer)!;
 
@@ -180,6 +180,7 @@ function parse (source : string) : TERM[] {
         //console.log('TOKENS: ', tokens);
         //console.log('STACK:  ', stack);
         let token = tokens.shift()!;
+        if (token.startsWith(';')) continue;
         switch (token) {
         case '(':
             stack.push([]);
@@ -198,31 +199,32 @@ function parse (source : string) : TERM[] {
                 tokens = [ tokens.shift()!, ')', ...tokens ];
             }
             break;
-        case '#true':
-            stack.at(-1)!.push(bool(true));
-            break;
-        case '#false':
-            stack.at(-1)!.push(bool(false));
-            break;
         default:
-            if (token.startsWith('"')) {
-                stack.at(-1)!.push(str(token));
-            } else if (!isNaN(parseInt(token))) {
-                stack.at(-1)!.push(num(parseInt(token)));
-            } else if (!isNaN(parseFloat(token))) {
-                stack.at(-1)!.push(num(parseFloat(token)));
+            let tos = stack.at(-1);
+            if (tos == undefined) {
+                stack = tos = [];
+            }
+            if (token == '#true') {
+                tos.push(bool(true));
+            } else if (token == '#false') {
+                tos.push(bool(false));
+            } else if (token.startsWith('"')) {
+                tos.push(str(token));
+            } else if (!isNaN(Number(token))) {
+                tos.push(num(Number(token)));
             } else {
-                stack.at(-1)!.push(sym(token));
+                tos.push(sym(token));
             }
         }
     }
 
     while (stack.length > 0) {
-        let lst = list(...stack.pop()!);
-        if (stack.at(-1) == undefined) {
-            done.push(lst);
+        let next  = stack.pop();
+        let token = Array.isArray(next) ? list(...next) : next;
+        if (stack.at(-1) === undefined) {
+            done.push(token);
         } else {
-            stack.at(-1)!.push(lst);
+            stack.at(-1)!.push(token);
         }
     }
 
@@ -442,16 +444,16 @@ function Drop (env : Env, kont : Kontinue) : Drop {
     return { type : 'DROP', env, kont }
 }
 
-function Block (env : Env, kont : Kontinue) : Block {
-    return { type : 'BLOCK', pid : undefined, env, kont }
+function Block (env : Env, kont : Kontinue, pid : Pid | undefined = undefined) : Block {
+    return { type : 'BLOCK', pid, env, kont }
 }
 
-function Yield (env : Env, kont : Kontinue) : Yield {
-    return { type : 'YIELD', result : undefined, env, kont }
+function Yield (env : Env, kont : Kontinue, result : TERM | undefined = undefined) : Yield {
+    return { type : 'YIELD', result, env, kont }
 }
 
-function Halt (env : Env) : Halt {
-    return { type : 'HALT', result : undefined, env }
+function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
+    return { type : 'HALT', result, env }
 }
 
 function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
@@ -549,9 +551,12 @@ class Strand {
             local = bind( sym('$ppid'), ppid, local );
         }
 
-        let kont : Kontinue = EvalExpr( exprs.pop()!, local, Halt( local ) );
-        while (exprs.length > 0) {
-            kont = EvalExpr( exprs.pop()!, local, Drop( local, kont ) );
+        let kont : Kontinue = Halt( local, nil );
+        if (exprs.length > 0) {
+            kont = EvalExpr( exprs.pop()!, local, kont );
+            while (exprs.length > 0) {
+                kont = EvalExpr( exprs.pop()!, local, Drop( local, kont ) );
+            }
         }
 
         // push this so it runs immedately
@@ -832,6 +837,7 @@ let test_source = `
 
     (let thur-tee (+ 10 20))
 
+    ;)
     (let pid (fork (
         (join (fork (yield +)))
         (join (fork (
@@ -863,50 +869,49 @@ let test_source = `
         (length (list 1 2 3 4 5))
         (length-iter (list 1 2 3 4 5) 0)
         (tail-call-demo 10)
-        (length
-            (list
-                30
-                thirty
-                (+ 10 20)
-                thur-tee
-                (+ (* 2 5) 20)
-                (get-thirty)
-                (+ 10 (* 4 5))
-                (+ (* 2 5) (* 4 5))
-                (+ (* 2 (- 9 4)) (* 4 5))
-                (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
-                (adder 10 20)
-                (adder (double 5) 20)
-                (adder 10 (* (double 2) 5))
-                (adder (fib 6) 22)
-                (adder (fib 8) (+ 1 (double 4)))
-                (- (fact 6) (+ (* (fact 3) 100) 90))
-                ((lambda (n m) (+ n m)) 10 20)
-                ((lambda (f n m) (f n m)) adder 10 20)
-                (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
-                (length (range 1 30))
-                (+ (length (range 1 10)) (length (range 1 (* 4 5))))
-                (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
-                (sum (list 4 (fib 8) (- (fact 3) 1)))
-                (+ (sum (range 0 (fib 6))) (- 2 8))
-                (sum (grep
-                        (lambda (x) (>= x 10))
-                        (list 0 2 10 4 7 20 3 1)))
-                (sum (map
-                        (lambda (x) (if (<= x 20) x 0))
-                        (list 100 25 10 411 75 20 35 1000)))
-                (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
-                (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
-                ((make-adder 10) 20)
-                ((make-adder 20) 10)
-                (join (fork (+ 10 20)))
-                (join (fork (+ (yield 10) (yield 20))))
-                (join pid)
-            )
+        ;; many ways to calculate 30
+        (list
+            30
+            thirty
+            (+ 10 20)
+            (+ 10.5 19.5)
+            thur-tee
+            (+ (* 2 5) 20)
+            (get-thirty)
+            (+ 10 (* 4 5))
+            (+ (* 2 5) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 5))
+            (+ (* 2 (- 9 4)) (* 4 (+ 4 1)))
+            (adder 10 20)
+            (adder (double 5) 20)
+            (adder 10 (* (double 2) 5))
+            (adder (fib 6) 22)
+            (adder (fib 8) (+ 1 (double 4)))
+            (- (fact 6) (+ (* (fact 3) 100) 90))
+            ((lambda (n m) (+ n m)) 10 20)
+            ((lambda (f n m) (f n m)) adder 10 20)
+            (+ (length (list 0 1 2 3 4 5 6 7 8 9)) 20)
+            (length (range 1 30))
+            (+ (length (range 1 10)) (length (range 1 (* 4 5))))
+            (+ (product (list 2 1 5)) (sum (list 2 4 6 8)))
+            (sum (list 4 (fib 8) (- (fact 3) 1)))
+            (+ (sum (range 0 (fib 6))) (- 2 8))
+            (sum (grep
+                    (lambda (x) (>= x 10))
+                    (list 0 2 10 4 7 20 3 1)))
+            (sum (map
+                    (lambda (x) (if (<= x 20) x 0))
+                    (list 100 25 10 411 75 20 35 1000)))
+            (if (even? (* 2 5)) (+ (* 2 5) 20) -1)
+            (if (even? (* 3 5)) -1 (if (odd? (* 3 5)) 30 -1))
+            ((make-adder 10) 20)
+            ((make-adder 20) 10)
+            (join (fork (+ 10 20)))
+            (join (fork (+ (yield 10) (yield 20))))
+            (join pid)
         )
         "<- all done!"
     )
-
 `;
 
 let source = ``;

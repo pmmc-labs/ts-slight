@@ -2,15 +2,9 @@
 # TODO
 <!----------------------------------------------------------------------------->
 
-- make (defun) only programs not crash
 - restore global quota
 - catch ERRs before they go too far
     - check for them in RETURN?
-- make (if) stricter on the Bool test
-    - should break for non Bools?
-- add eq? case for Env 
-    - use === for comparing lambdas (this is what Scheme does)
-- make EvalArgs copy the done array, not mutate it
 
 - Error sites to fix
     - User-program errors 
@@ -39,46 +33,52 @@
 ## Claude NOTES   
 <!----------------------------------------------------------------------------->
 
-### Deadlock handling 
+### Bug 1 (crash): joining an already-errored child
 
-When running empties with blocked non-empty, three options: 
-    (a) throw — simplest, but loses all completed results; 
-    (b) return { halted, blocked } and let the caller report shape; 
-    (c) inject a fault: 
-        - set each blocked process's kont to ThrowError(raise('DEADLOCK'), ...) 
-        - re-enqueue them
-        - and they drain through the normal ERR path 
-        — and once join exists
-            - faulting a blocked process wakes its waiters, 
-            - so deadlock cycles unwind themselves. 
-        
-I'd do (c) for the mechanism plus (b) for the return shape. One structural note 
-for join itself: blocked is keyed by the blocked process's pid, but joins wake 
-by target pid — you'll want a reverse index (Map<targetPid, waiters[]>) or a 
-waiting_on field on Process, plus pid-keyed lookup into halted. Also decide 
-what joining an ERR'd child returns: the ERROR as a value (joiner decides), or 
-propagate the fault to the joiner. The former composes better with join/collect.
-    
-### Resume-with-value — build it once, use it three times. 
+(let p (fork (nope)))
+(join p)
 
-Right now (yield expr) evaluates expr after resuming, because Yield wraps 
-the un-evaluated EvalExpr. You could document that as thunk-like semantics, 
-but consider the alternative: 
+→ Error: The halted process should have HALT   [raw stack, everything dies]
 
-    - a suspended process is always resumed by setting 
-        `proc.kont = Return(resume_value, env, saved_kont)`. 
+blockProcess (tests/001-basic.ts:496) asserts the halted blocker has a HALT kont — but since the error-isolation fix, halted also contains ERR processes, so the invariant is simply
+false now.
 
-That one mechanism gives you 
-    (a) (yield v) that evaluates v first and can hand it to the scheduler
-    (b) join delivering the child's results to the woken joiner
-    (c) recv delivering a message
-    
-all identical at the scheduler level. 
+### Bug 2 (wrong answer): child errors after the parent blocked
 
-Tradeoff: 
-slightly more machinery now (Yield needs to carry/receive a value slot), but 
-you're about to need it for join regardless, so building yield on it first is 
-a low-stakes rehearsal.
+(let p (fork (do (yield 0) (nope))))
+(join p)
+→ PID[1] ERRORED: E!DEADLOCKED!
+
+haltProcess (tests/001-basic.ts:515) only wakes waiters when the kont is HALT. An ERR'd child parks in halted without waking anyone, so its joiners strand and get misreported as
+deadlocked — the real error (Unable to find nope) is attributed to the wrong process and the wrong cause.
+
+### Options;
+
+These are one decision with two code sites. The options:
+
+- (a) Deliver the ERROR as a value — the joiner receives the child's ERROR term as the join result. Pro: composes with join/collect (one failed child doesn't nuke the batch); ERRORs
+are already first-class data in your builtin channel. Con: errors silently launder — the joiner passes the ERROR to +, which re-raises as Must be numbers, duh!, and the original cause
+is gone. You'd also want an error? predicate builtin so programs can actually check.
+- (b) Propagate the fault — wake each waiter with p.kont = ThrowError(childKont.error, p.kont.kont) so joining a failed process fails the joiner with the child's error. Pro: no
+laundering; cascades up join chains naturally; and it's consistent with your deadlock policy, which already faults blocked processes rather than handing them a value. Con:
+join/collect can't gather partial results, and there's no way to inspect a failure until you have (try ...).
+- (c) Tagged results — join returns ('ok v) / ('err e). Most explicit, but taxes the common case and touches every join site.
+
+I'd do (b) now for consistency with DEADLOCKED!, and layer (a)'s behavior in later as join/catch or via try. Whichever you pick, implement it in both places — the halted branch of
+blockProcess and the wake loop of haltProcess. They currently duplicate the resume logic (Return(result, p.kont.kont.env, p.kont.kont)); extracting one resumeWaiter(waiter, blocker)
+helper makes it impossible for the two paths to disagree, which is exactly how these two bugs got out of sync in the first place.
+
+### Smaller findings
+
+- Dead/misleading branch in blockProcess (tests/001-basic.ts:500): the next.type == 'HALT' check on the blockee can never be true — a process only reaches blockProcess from run's
+BLOCK case, so its kont is always BLOCK. And if it somehow were HALT, overwriting its result with the blocker's result would be wrong anyway. Same for the != 'HALT' && != 'ERR' waiter
+guard in haltProcess — blocked processes always hold BLOCK konts. I'd replace both with if (kont.type != 'BLOCK') throw invariant checks; a guard that silently skips is where the
+next Bug-2-style misreport hides.
+- fork silently drops extra body exprs: (fork (a) (b)) runs only (a). spawnProcess already takes TERM[], so this.spawnProcess(uncons(tail), ...) gives you implicit-do semantics for
+free — that also matches how the root process is spawned.
+- Kont mutation (kont.result = returned, kont.pid = returned in the YIELD/HALT/BLOCK cases): fine while continuations are single-shot and freshly allocated, same caveat as the old
+EvalArgs.done — worth a NOTE comment so future-you doesn't reuse a kont.
+- Still open from the TODO (unchanged, just confirming): no global quota, env sharing, parser items.
 
 ### Env sharing. Since you've confirmed the leak is "parent binds after fork, child sees it," the options:
 
@@ -103,11 +103,6 @@ mutation or set! enters the language.
 
 ### Parser
 
-- Floats truncated (3.14 → 3): 
-    - the parseInt branch shadows parseFloat. 
-    - Fix: test with /^-?\d+(\.\d+)?$/ then use parseFloat, or just 
-      Number(token) with an isNaN check (note Number also accepts 
-      hex/scientific — decide if you want that).
 - '(...) steals the parent's ): 
     - quote frames are never explicitly closed for lists. 
     - Fix within the current design: mark quote frames, and after any completed 
@@ -120,10 +115,6 @@ mutation or set! enters the language.
 
 - Strings keep their quotes (""hello""): 
     - str(token.slice(1, -1)).
-- Bare top-level atom crashes (stack.at(-1)! on empty stack): 
-    - route to done when the stack is empty.
-- No comments: 
-    — add ;[^\n]* to the lexer and filter the matches, cheapest possible fix.
 
 ### Cosmetic
 
@@ -131,17 +122,6 @@ mutation or set! enters the language.
 the top of step's loop (every lambda return burns one no-op step), and each 
 HALT still gets kontinue'd twice. Harmless, just noise in the step counts 
 and DEBUG traces.
-
-Bottom line: 
-the scheduler core is now in good shape for join — the pieces I'd do before 
-writing it are 
-
-- the resume-with-value mechanism (it's join's delivery channel)
-- the waiters/halted indexing
-- the deadlock policy
-
-... in that order. The error-channel unification (3) is the biggest remaining 
-semantic decision; everything else is incremental.
 
 <!----------------------------------------------------------------------------->
 # Concurrency Mechanism Notes
