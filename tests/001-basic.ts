@@ -6,12 +6,13 @@ const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? tr
 type LITERAL  = Bool | Str | Num
 type LIST     = Cons | Nil
 type CALLABLE = Lambda | Builtin
-type TERM     = LIST | LITERAL | CALLABLE | Sym | Env | ERROR
+type TERM     = LIST | LITERAL | CALLABLE | Sym | Pid | Env | ERROR
 
 type Nil      = { type : 'NIL' }
 type Cons     = { type : 'CONS', first  : TERM, rest: LIST }
 
 type Sym      = { type : 'SYM',   ident : string }
+type Pid      = { type : 'PID',   ident : number }
 type Str      = { type : 'STR',   value : string }
 type Num      = { type : 'NUM',   value : number }
 type Bool     = { type : 'BOOL',  value : boolean }
@@ -27,6 +28,7 @@ function isNil  (t : TERM) : t is Nil  { return t.type === 'NIL'  }
 function isCons (t : TERM) : t is Cons { return t.type === 'CONS' }
 
 function isSym  (t : TERM) : t is Sym  { return t.type === 'SYM'  }
+function isPid  (t : TERM) : t is Pid  { return t.type === 'PID'  }
 function isStr  (t : TERM) : t is Str  { return t.type === 'STR'  }
 function isNum  (t : TERM) : t is Num  { return t.type === 'NUM'  }
 function isBool (t : TERM) : t is Bool { return t.type === 'BOOL' }
@@ -85,6 +87,8 @@ function list (...args : TERM[]) : LIST {
     return xs;
 }
 
+function newPid (ident : number) : Pid { return { type : 'PID', ident } }
+
 function newEnv (parent : Env | undefined = undefined) : Env {
     return { type : 'ENV', bindings : new Map<string,TERM>(), parent }
 }
@@ -133,8 +137,9 @@ function eq (lhs : TERM, rhs : TERM) : boolean {
     case isError(lhs)   && isError(rhs)   : return lhs.error === rhs.error;
     case isLiteral(lhs) && isLiteral(rhs) : return lhs.value == rhs.value;
     case isSym(lhs)     && isSym(rhs)     : return lhs.ident == rhs.ident;
+    case isPid(lhs)     && isPid(rhs)     : return lhs.ident == rhs.ident;
     case isCons(lhs)    && isCons(rhs)    : return eq(lhs.first, rhs.first)   && eq(lhs.rest, rhs.rest);
-    case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && eq(lhs.env, rhs.env);
+    case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && lhs.env === rhs.env;
     case isBuiltin(lhs) && isBuiltin(rhs) : return eq(lhs.params, rhs.params) && lhs.body === rhs.body && lhs.name == rhs.name;
     default : return false;
     }
@@ -147,6 +152,7 @@ function pprint (t : TERM) : string {
     case isBool(t)    : return t.value ? '#true' : '#false'
     case isNil(t)     : return '()'
     case isSym(t)     : return t.ident
+    case isPid(t)     : return `PID[${t.ident}]`
     case isCons(t)    : return `(${uncons(t).map(pprint).join(' ')})`
     case isLambda(t)  : return `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`
     case isBuiltin(t) : return `#<${t.name}>`
@@ -357,6 +363,7 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
+type Block     = { type : 'BLOCK', pid    : Pid  | undefined } & Kontinuation
 type Yield     = { type : 'YIELD', result : TERM | undefined } & Kontinuation
 type Halt      = { type : 'HALT',  result : TERM | undefined, env : Env }
 
@@ -367,6 +374,7 @@ type Kontinue =
     | Apply
     | Drop
     | Return
+    | Block
     | Yield
     | Halt
     | Err
@@ -386,6 +394,7 @@ function pprintKont (kont : Kontinue) : string {
     case 'DROP'       : break;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
+    case 'BLOCK'      : kontStr += ` =: ${kont.pid    == undefined ? '' : pprint(kont.pid)}`; break;
     case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
@@ -433,6 +442,10 @@ function Drop (env : Env, kont : Kontinue) : Drop {
     return { type : 'DROP', env, kont }
 }
 
+function Block (env : Env, kont : Kontinue) : Block {
+    return { type : 'BLOCK', pid : undefined, env, kont }
+}
+
 function Yield (env : Env, kont : Kontinue) : Yield {
     return { type : 'YIELD', result : undefined, env, kont }
 }
@@ -448,30 +461,18 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 // -----------------------------------------------------------------------------
 
-type Process = { pid : Num, kont : Kontinue, steps : number }
+type Process = { pid : Pid, kont : Kontinue, steps : number }
 
 class Strand {
-    public running : Process[] = [];
-    public halted  : Process[] = [];
-    public blocked : Map<number,Process> = new Map<number,Process>();
+    public running : Process[]             = [];
+    public halted  : Process[]             = [];
+    public blocked : Map<number,Process[]> = new Map<number,Process[]>();
 
     private PID_SEQ = 0;
     private DEFAULT_QUOTA = 100_000;
 
-    private nextPID () : Num {
-        return num(++this.PID_SEQ);
-    }
-
-    private haltProcess (proc : Process) : void {
-        this.halted.push( proc );
-    }
-
     private enqueueProcess (proc : Process) : void {
         this.running.unshift(proc);
-    }
-
-    private blockProcess (proc : Process) : void {
-        this.blocked.set( proc.pid.value, proc );
     }
 
     private yieldProcess (proc : Process) : void {
@@ -481,15 +482,34 @@ class Strand {
         this.enqueueProcess(proc);
     }
 
-    private unblockProcess (pid : Num) : void {
-        let proc = this.blocked.get( pid.value );
-        if (proc === undefined) throw new Error(`Could not find PID(${pprint(pid)}) to unblock`);
-        this.blocked.delete( pid.value );
-        this.enqueueProcess(proc);
+    private blockProcess (blocker_pid : Pid, blockee : Process) : void {
+        if (this.blocked.has( blocker_pid.ident )) {
+            let blockees = this.blocked.get( blocker_pid.ident )!;
+            this.blocked.set( blocker_pid.ident, [ ...blockees, blockee ] );
+        } else {
+            this.blocked.set( blocker_pid.ident, [ blockee ] );
+        }
     }
 
-    private spawnProcess (exprs : TERM[], env : Env) : Num {
-        let pid   = this.nextPID();
+    private haltProcess (proc : Process) : void {
+        if (proc.kont.type != 'HALT') throw new Error(`You can only halt on a HALT!`);
+        if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
+        if (this.blocked.has( proc.pid.ident )) {
+            let result = proc.kont.result;
+            let procs  = this.blocked.get( proc.pid.ident )!;
+            this.blocked.delete( proc.pid.ident );
+            procs.forEach((p) => {
+                if (p.kont.type != 'HALT' && p.kont.type != 'ERR') {
+                    p.kont = Return( result, p.kont.kont.env, p.kont.kont );
+                    this.enqueueProcess(p);
+                }
+            });
+        }
+        this.halted.push( proc );
+    }
+
+    private spawnProcess (exprs : TERM[], env : Env) : Pid {
+        let pid = newPid(++this.PID_SEQ);
 
         // NOTE:
         // Because the binding is mutable in the Env, it
@@ -534,7 +554,7 @@ class Strand {
 
         while (this.running.length > 0) {
             let proc = this.running.pop()!;
-            if (DEBUG) console.log(`>>>> : Switching to PID(${ pprint(proc.pid) })`);
+            if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
             proc = this.step(proc, this.DEFAULT_QUOTA);
             switch (proc.kont.type) {
             case 'ERR'   :
@@ -544,8 +564,13 @@ class Strand {
             case 'YIELD' :
                 this.yieldProcess(proc);
                 break;
+            case 'BLOCK' :
+                let blocker = proc.kont.pid;
+                if (blocker === undefined) throw new Error(`Expected PID from BLOCK, got undefined`);
+                this.blockProcess(blocker, proc);
+                break;
             default:
-                if (DEBUG) console.log(`!!!! : Quota exhausted for PID(${ pprint(proc.pid) }), refilling`);
+                if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
                 this.enqueueProcess(proc);
             }
         }
@@ -563,6 +588,7 @@ class Strand {
             proc.kont = this.kontinue(proc);
             quota--;
             switch (proc.kont.type) {
+            case 'BLOCK'  :
             case 'HALT'   :
             case 'YIELD'  : return proc;
             case 'RETURN' :
@@ -582,7 +608,7 @@ class Strand {
         let kont = proc.kont;
         if (DEBUG) {
             console.log([
-                proc.pid.value.toString().padStart(4, '0'),
+                proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
                 pprintKont(proc.kont)
             ].join(' | '));
@@ -624,6 +650,8 @@ class Strand {
                         return EvalExpr( car(tail), kont.env, Yield( kont.env, kont.kont ) );
                     case 'fork':
                         return Return( this.spawnProcess([ car(tail) ], kont.env), kont.env, Yield( kont.env, kont.kont ) );
+                    case 'join':
+                        return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -641,7 +669,6 @@ class Strand {
         case 'EVAL_ARGS':
             let done = [ ...kont.done ];
             if (returned != undefined) {
-                if (returned == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`, kont);
                 done.push(returned);
             }
             if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
@@ -662,10 +689,16 @@ class Strand {
             }
         case 'DROP':
             return kont.kont;
+        case 'RETURN':
+            return kont;
+        case 'BLOCK':
+            if (returned !== undefined) {
+                if (!isPid(returned)) return RaiseError(`Expected PID returned to BLOCK, got ${returned.type}`, kont);
+                kont.pid = returned;
+            }
+            return kont;
         case 'YIELD':
             if (returned !== undefined) kont.result = returned;
-            return kont;
-        case 'RETURN':
             return kont;
         case 'HALT':
             if (returned !== undefined) kont.result = returned;
@@ -809,7 +842,17 @@ let test_source = `
 
 `;
 
-let source = ``;
+let source = `
+
+
+    (let pid (fork (do
+            (pprint (list 'in-fork $$))
+            (yield (pprint (list 'in-fork $$)))
+        )))
+    (pprint (list 'in-root-child-pid pid))
+    (pprint (list 'in-root $$))
+
+`;
 
 let exprs = parse(source || test_source);
 
