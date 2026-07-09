@@ -845,12 +845,8 @@ let test_source = `
 let source = `
 
 
-    (let pid (fork (do
-            (pprint (list 'in-fork $$))
-            (yield (pprint (list 'in-fork $$)))
-        )))
-    (pprint (list 'in-root-child-pid pid))
-    (pprint (list 'in-root $$))
+    (let pid (fork (+ 10 20)))
+    (let result (join pid))
 
 `;
 
