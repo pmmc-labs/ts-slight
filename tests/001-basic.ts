@@ -577,7 +577,7 @@ class Strand {
         return proc;
     }
 
-    kontinue (proc : Process, ...stack : TERM[]) : Kontinue {
+    kontinue (proc : Process, returned : TERM | undefined = undefined) : Kontinue {
         proc.steps++;
         let kont = proc.kont;
         if (DEBUG) {
@@ -635,24 +635,21 @@ class Strand {
                 return Return( kont.expr, kont.env, kont.kont );
             }
         case 'EVAL_HEAD':
-            let call = stack.pop();
-            if (call == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`, kont);
-            if (!isCallable(call)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`, kont);
-            return EvalArgs(kont.args, [], kont.env, Apply( call, kont.env, kont.kont ))
+            if (returned == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`, kont);
+            if (!isCallable(returned)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`, kont);
+            return EvalArgs(kont.args, [], kont.env, Apply( returned, kont.env, kont.kont ))
         case 'EVAL_ARGS':
-            let done = kont.done;
-            if (stack.length > 0) {
-                let next_arg = stack.pop();
-                if (next_arg == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`, kont);
-                done.push(next_arg);
+            let done = [ ...kont.done ];
+            if (returned != undefined) {
+                if (returned == undefined) return RaiseError(`Expected next_arg returned to EVAL_ARGS, got undefined`, kont);
+                done.push(returned);
             }
             if (isNil(kont.args)) return Return( list( ...done ), kont.env, kont.kont );
             return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
         case 'APPLY':
-            let args = stack.pop();
-            if (args == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`, kont);
-            if (!isList(args))     return RaiseError(`Expected args LIST returned to APPLY, got something else`, kont);
-
+            if (returned == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to APPLY, got something else`, kont);
+            let args = returned;
             switch (true) {
             case isLambda(kont.call):
                 let local = bindParams( kont.call.params, args, kont.call.env );
@@ -666,31 +663,26 @@ class Strand {
         case 'DROP':
             return kont.kont;
         case 'YIELD':
-            let yield_result = stack.pop();
-            if (yield_result !== undefined) kont.result = yield_result;
+            if (returned !== undefined) kont.result = returned;
             return kont;
         case 'RETURN':
             return kont;
         case 'HALT':
-            let final_result = stack.pop();
-            if (final_result !== undefined) kont.result = final_result;
+            if (returned !== undefined) kont.result = returned;
             return kont;
         case 'DEFINE':
-            let value = stack.pop();
-            if (value == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
-            let local = bind( kont.name, value, kont.env );
+            if (returned == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
+            let local = bind( kont.name, returned, kont.env );
             return kont.kont;
         case 'COND':
-            let test = stack.pop();
-            if (test == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`, kont);
-
-            if (isBool(test) && isTrue(test)) {
+            if (returned == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`, kont);
+            if (!isBool(returned))     return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
+            if (isTrue(returned)) {
                 return EvalExpr( kont.if_true, kont.env, kont.kont )
             } else {
                 return EvalExpr( kont.if_false, kont.env, kont.kont )
             }
         case 'SCOPE_EXIT':
-            let returned = stack.pop();
             if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
             return Return( returned, kont.env, kont.kont )
         default:
