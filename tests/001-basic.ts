@@ -356,9 +356,9 @@ type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Konti
 
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
-type Yield     = { type : 'YIELD'      } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
-type Halt      = { type : 'HALT', results : TERM[], env : Env }
+type Yield     = { type : 'YIELD', result : TERM | undefined } & Kontinuation
+type Halt      = { type : 'HALT',  result : TERM | undefined, env : Env }
 
 type Kontinue =
     | EvalExpr
@@ -377,17 +377,17 @@ type Kontinue =
 function pprintKont (kont : Kontinue) : string {
     let kontStr  = kont.type.padStart(11, " ");
     switch (kont.type) {
-    case 'EVAL_EXPR'  : kontStr += ` =: ${pprint(kont.expr)}`; break;
-    case 'EVAL_HEAD'  : kontStr += ` =: ${pprint(kont.args)}`; break;
-    case 'EVAL_ARGS'  : kontStr += ` =: ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
-    case 'APPLY'      : kontStr += ` =: ${pprint(kont.call)}`; break;
+    case 'EVAL_EXPR'  : kontStr += ` =: ${pprint(kont.expr)}`;  break;
+    case 'EVAL_HEAD'  : kontStr += ` =: ${pprint(kont.args)}`;  break;
+    case 'APPLY'      : kontStr += ` =: ${pprint(kont.call)}`;  break;
     case 'RETURN'     : kontStr += ` =: ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : kontStr += ` =: ${pprint(kont.name)}`; break;;
+    case 'DEFINE'     : kontStr += ` =: ${pprint(kont.name)}`;  break;
+    case 'EVAL_ARGS'  : kontStr += ` =: ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
     case 'DROP'       : break;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
-    case 'YIELD'      : break;
-    case 'HALT'       : break;
+    case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
+    case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
     return kontStr;
@@ -434,11 +434,11 @@ function Drop (env : Env, kont : Kontinue) : Drop {
 }
 
 function Yield (env : Env, kont : Kontinue) : Yield {
-    return { type : 'YIELD', env, kont }
+    return { type : 'YIELD', result : undefined, env, kont }
 }
 
 function Halt (env : Env) : Halt {
-    return { type : 'HALT', results : [], env }
+    return { type : 'HALT', result : undefined, env }
 }
 
 function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
@@ -476,7 +476,8 @@ class Strand {
 
     private yieldProcess (proc : Process) : void {
         if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
-        proc.kont = proc.kont.kont;
+        if (proc.kont.result === undefined) throw new Error(`Expected result in YIELD!`);
+        proc.kont = Return( proc.kont.result, proc.kont.kont.env, proc.kont.kont );
         this.enqueueProcess(proc);
     }
 
@@ -620,9 +621,9 @@ class Strand {
                     case 'quote':
                         return Return( car(tail), kont.env, kont.kont );
                     case 'yield':
-                        return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
+                        return EvalExpr( car(tail), kont.env, Yield( kont.env, kont.kont ) );
                     case 'fork':
-                        return Yield( kont.env, Return( this.spawnProcess([ car(tail) ], kont.env), kont.env, kont.kont ));
+                        return Return( this.spawnProcess([ car(tail) ], kont.env), kont.env, Yield( kont.env, kont.kont ) );
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -665,12 +666,14 @@ class Strand {
         case 'DROP':
             return kont.kont;
         case 'YIELD':
+            let yield_result = stack.pop();
+            if (yield_result !== undefined) kont.result = yield_result;
             return kont;
         case 'RETURN':
             return kont;
         case 'HALT':
             let final_result = stack.pop();
-            if (final_result !== undefined) kont.results.push(final_result);
+            if (final_result !== undefined) kont.result = final_result;
             return kont;
         case 'DEFINE':
             let value = stack.pop();
@@ -814,10 +817,7 @@ let test_source = `
 
 `;
 
-let source = `
-    ((lambda (a b) (+ a b)) 1 2 3)
-
-`;
+let source = ``;
 
 let exprs = parse(source || test_source);
 
@@ -829,9 +829,9 @@ let halted = strand.run(exprs, env);
 console.group('DONE:');
 for (const proc of halted) {
     if (proc.kont.type == 'HALT') {
-        console.log(proc.kont.results.map(pprint));
+        console.log('HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
     } else if (proc.kont.type == 'ERR') {
-        console.log(pprint(proc.kont.error));
+        console.log('ERRORD: ', pprint(proc.kont.error));
     } else {
         console.log('WTF! is this?', proc);
     }
