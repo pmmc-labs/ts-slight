@@ -477,7 +477,7 @@ class Strand {
     private yieldProcess (proc : Process) : void {
         if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
         proc.kont = proc.kont.kont;
-        this.halted.push(proc);
+        this.enqueueProcess(proc);
     }
 
     private unblockProcess (pid : Num) : void {
@@ -502,7 +502,9 @@ class Strand {
         while (exprs.length > 0) {
             kont = EvalExpr( exprs.pop()!, local, Drop( local, kont ) );
         }
-        this.enqueueProcess({ pid, kont, steps : 0 });
+
+        // push this so it runs immedately
+        this.running.push({ pid, kont, steps : 0 });
         return pid;
     }
 
