@@ -512,21 +512,24 @@ class Strand {
     }
 
     private haltProcess (proc : Process) : void {
-        if (proc.kont.type != 'HALT') throw new Error(`You can only halt on a HALT!`);
-        if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
-        if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
-        if (this.blocked.has( proc.pid.ident )) {
-            let result = proc.kont.result;
-            let procs  = this.blocked.get( proc.pid.ident )!;
-            this.blocked.delete( proc.pid.ident );
-            if (DEBUG) console.log(`#### : ${pprint(proc.pid)} is blocking [ ${procs.map((p) => pprint(p.pid)).join(', ')} ]`);
-            procs.forEach((p) => {
-                if (p.kont.type != 'HALT' && p.kont.type != 'ERR') {
-                    p.kont = Return( result, p.kont.kont.env, p.kont.kont );
-                    if (DEBUG) console.log(`<<<< : Unblocking ${pprint(p.pid)}`);
-                    this.enqueueProcess(p);
-                }
-            });
+        if (proc.kont.type == 'HALT') {
+            if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
+            if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
+            if (this.blocked.has( proc.pid.ident )) {
+                let result = proc.kont.result;
+                let procs  = this.blocked.get( proc.pid.ident )!;
+                this.blocked.delete( proc.pid.ident );
+                if (DEBUG) console.log(`#### : ${pprint(proc.pid)} is blocking [ ${procs.map((p) => pprint(p.pid)).join(', ')} ]`);
+                procs.forEach((p) => {
+                    if (p.kont.type != 'HALT' && p.kont.type != 'ERR') {
+                        p.kont = Return( result, p.kont.kont.env, p.kont.kont );
+                        if (DEBUG) console.log(`<<<< : Unblocking ${pprint(p.pid)}`);
+                        this.enqueueProcess(p);
+                    } else {
+                        if (DEBUG) console.log(`#### : ${pprint(p.pid)} is already halted, cannot join ${pprint(proc.pid)}`);
+                    }
+                });
+            }
         }
         this.halted.set( proc.pid.ident, proc );
     }
@@ -579,39 +582,50 @@ class Strand {
 
         let init_pid = this.spawnProcess( to_run, env, undefined ); // no parent
 
-        while (this.running.length > 0) {
-            let proc = this.running.pop()!;
-            if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
-            proc = this.step(proc, this.DEFAULT_QUOTA);
-            switch (proc.kont.type) {
-            case 'ERR'   :
-            case 'HALT'  :
-                this.haltProcess(proc);
+        while (true) {
+
+            while (this.running.length > 0) {
+                let proc = this.running.pop()!;
+                if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
+                proc = this.step(proc, this.DEFAULT_QUOTA);
+                switch (proc.kont.type) {
+                case 'ERR'   :
+                case 'HALT'  :
+                    this.haltProcess(proc);
+                    break;
+                case 'YIELD' :
+                    this.yieldProcess(proc);
+                    break;
+                case 'BLOCK' :
+                    let blocker = proc.kont.pid;
+                    if (blocker === undefined) throw new Error(`Expected PID from BLOCK, got undefined`);
+                    this.blockProcess(blocker, proc);
+                    break;
+                default:
+                    if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
+                    this.enqueueProcess(proc);
+                }
+            }
+
+            if (this.blocked.size > 0) {
+                let procs = [ ...this.blocked.values() ].flat();
+                this.blocked.clear();
+                //console.log(procs);
+                procs.forEach((p) => {
+                    p.kont = RaiseError('DEADLOCKED!', p.kont);
+                    this.enqueueProcess(p);
+                });
+            } else {
                 break;
-            case 'YIELD' :
-                this.yieldProcess(proc);
-                break;
-            case 'BLOCK' :
-                let blocker = proc.kont.pid;
-                if (blocker === undefined) throw new Error(`Expected PID from BLOCK, got undefined`);
-                this.blockProcess(blocker, proc);
-                break;
-            default:
-                if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
-                this.enqueueProcess(proc);
             }
         }
-
-        // TODO - check for blocked processes here
-        // and do some kind of reporting, but in
-        // general this return type could be better
-        // it just makes things easier at the moment
 
         return [ ...this.halted.values() ];
     }
 
     step (proc : Process, quota : number) : Process {
         while (quota > 0) {
+            if (proc.kont.type == 'ERR') return proc;
             proc.kont = this.kontinue(proc);
             quota--;
             switch (proc.kont.type) {
@@ -625,7 +639,6 @@ class Strand {
                 quota--;
                 break;
             }
-            if (proc.kont.type == 'ERR') return proc;
         }
         return proc;
     }
@@ -717,6 +730,8 @@ class Strand {
         case 'DROP':
             return kont.kont;
         case 'RETURN':
+            return kont;
+        case 'ERR':
             return kont;
         case 'BLOCK':
             if (returned !== undefined) {
