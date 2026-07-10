@@ -100,6 +100,7 @@ function bind (name : Sym, value : TERM, env : Env) : Env {
 
 function lookup (name : Sym, env : Env) : TERM {
     while (env != undefined) {
+        //console.log(`looking for ${pprint(name)} in `, env);
         if (env.bindings.has(name.ident)) return env.bindings.get(name.ident)!;
         if (env.parent == undefined) break;
         env = env.parent;
@@ -362,10 +363,11 @@ type Return    = { type : 'RETURN',    value : TERM                    } & Konti
 type Define    = { type : 'DEFINE',    name : Sym                      } & Kontinuation
 type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
 
+type Send      = { type : 'SEND'       } & Kontinuation
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
-type Block     = { type : 'BLOCK', pid    : Pid  | undefined } & Kontinuation
+type Block     = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
 type Yield     = { type : 'YIELD', result : TERM | undefined } & Kontinuation
 type Halt      = { type : 'HALT',  result : TERM | undefined, env : Env }
 
@@ -377,6 +379,7 @@ type Kontinue =
     | Drop
     | Return
     | Block
+    | Send
     | Yield
     | Halt
     | Err
@@ -396,7 +399,8 @@ function pprintKont (kont : Kontinue) : string {
     case 'DROP'       : break;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
-    case 'BLOCK'      : kontStr += ` =: ${kont.pid    == undefined ? '' : pprint(kont.pid)}`; break;
+    case 'SEND'       : break;
+    case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : 'RECV')}`; break;
     case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
@@ -444,8 +448,12 @@ function Drop (env : Env, kont : Kontinue) : Drop {
     return { type : 'DROP', env, kont }
 }
 
-function Block (env : Env, kont : Kontinue, pid : Pid | undefined = undefined) : Block {
-    return { type : 'BLOCK', pid, env, kont }
+function Block (env : Env, kont : Kontinue, on : WaitFor | undefined = undefined) : Block {
+    return { type : 'BLOCK', on, env, kont }
+}
+
+function Send (env : Env, kont : Kontinue) : Send {
+    return { type : 'SEND', env, kont }
 }
 
 function Yield (env : Env, kont : Kontinue, result : TERM | undefined = undefined) : Yield {
@@ -466,7 +474,13 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 function haltKey (pid : Pid)        : string { return `halt:${pid.ident}` }
 function mailKey (chan_id : number) : string { return `mail:${chan_id}`   }
 
-type Process = { pid : Pid, kont : Kontinue, steps : number }
+type Chan = { id : number, queue : TERM[] }
+
+type WaitFor =
+    | { target : 'JOIN', pid : Pid }
+    | { target : 'RECV' }
+
+type Process = { pid : Pid, kont : Kontinue, steps : number, mailbox : Chan }
 
 class Strand {
     public running : Process[]             = [];
@@ -475,6 +489,7 @@ class Strand {
     public procs   : Map<number,Process>   = new Map<number,Process>();
 
     private PID_SEQ       = 0;
+    private CHAN_SEQ      = 0;
     private DEFAULT_QUOTA = 1000;
 
     private awaitKey (key : string, proc : Process) : void {
@@ -513,6 +528,21 @@ class Strand {
         if (waiters == undefined) return;
         this.blocked.delete(key);
         waiters.forEach((p) => this.faultWaiter(p, error));
+    }
+
+    private sendMessage (target_pid : Pid, msg : TERM) : void {
+        let target = this.procs.get( target_pid.ident );
+        if (target == undefined || this.halted.has( target_pid.ident )) {
+            // fire-and-forget: sending to a dead or unknown pid succeeds silently
+            if (DEBUG) console.log(`#### : Dropping ${pprint(msg)} sent to dead ${pprint(target_pid)}`);
+            return;
+        }
+        target.mailbox.queue.push(msg);
+        let key = mailKey(target.mailbox.id);
+        if (this.blocked.has(key)) {
+            // the queue stays the source of truth: push above, shift here
+            this.deliver( key, target.mailbox.queue.shift()! );
+        }
     }
 
 
@@ -554,19 +584,8 @@ class Strand {
     }
 
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
-        let pid = newPid(++this.PID_SEQ);
-
-        // NOTE:
-        // Because the binding is mutable in the Env, it
-        // is possible that a child process will see changes
-        // from the parent after being spawned. This is
-        // almost certainly not what I want, but it is
-        // okay for the moment until I decide how to solve it
-        let local = bind( sym('$$'), pid, newEnv( env ) );
-        if (ppid !== undefined) {
-            // bind the parent PID if we have one
-            local = bind( sym('$ppid'), ppid, local );
-        }
+        let pid   = newPid(++this.PID_SEQ);
+        let local = newEnv( env );
 
         let kont : Kontinue = Halt( local, nil );
         if (exprs.length > 0) {
@@ -576,7 +595,7 @@ class Strand {
             }
         }
 
-        let proc : Process = { pid, kont, steps : 0 };
+        let proc : Process = { pid, kont, steps : 0, mailbox : { id : ++this.CHAN_SEQ, queue : [] } };
         this.procs.set( pid.ident, proc );
         // push this so it runs immedately
         this.running.push(proc);
@@ -584,6 +603,8 @@ class Strand {
     }
 
     run (exprs : TERM[], env : Env) : Process[] {
+        env = newEnv( env ); // for the (defun)s
+
         let to_run = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -621,9 +642,13 @@ class Strand {
                     this.yieldProcess(proc);
                     break;
                 case 'BLOCK' :
-                    let blocker = proc.kont.pid;
-                    if (blocker === undefined) throw new Error(`Expected PID from BLOCK, got undefined`);
-                    this.blockProcess(blocker, proc);
+                    let wait = proc.kont.on;
+                    if (wait === undefined) throw new Error(`Expected wait target from BLOCK, got undefined`);
+                    if (wait.target == 'JOIN') {
+                        this.blockProcess( wait.pid, proc );
+                    } else {
+                        this.awaitKey( mailKey(proc.mailbox.id), proc );
+                    }
                     break;
                 default:
                     if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
@@ -674,7 +699,7 @@ class Strand {
             console.log([
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
-                pprintKont(proc.kont)
+                pprintKont(proc.kont),
             ].join(' | '));
         }
         switch (kont.type) {
@@ -683,6 +708,14 @@ class Strand {
             case isCons(kont.expr):
                 let head = car(kont.expr);
                 let tail = cdr(kont.expr);
+
+                if (isSym(head) && head.ident === 'recv') {
+                    if (proc.mailbox.queue.length > 0) {
+                        return Return( proc.mailbox.queue.shift()!, kont.env, kont.kont );
+                    }
+                    return Block( kont.env, kont.kont, { target : 'RECV' } );
+                }
+
                 if (isSym(head) && isCons(tail)) {
                     switch (head.ident) {
                     case 'if' :
@@ -716,13 +749,19 @@ class Strand {
                         return Return( this.spawnProcess([ car(tail) ], kont.env, proc.pid ), kont.env, Yield( kont.env, kont.kont ) );
                     case 'join':
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
+                    case 'send':
+                        return EvalArgs( tail, [], kont.env, Send( kont.env, kont.kont ) );
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
             case isSym(kont.expr):
-                let found = lookup(kont.expr, kont.env);
-                if (isError(found)) return ThrowError(found, kont);
-                return Return( found, kont.env, kont.kont );
+                if (kont.expr.ident == '$$') {
+                    return Return( proc.pid, kont.env, kont.kont );
+                } else {
+                    let found = lookup(kont.expr, kont.env);
+                    if (isError(found)) return ThrowError(found, kont);
+                    return Return( found, kont.env, kont.kont );
+                }
             default :
                 return Return( kont.expr, kont.env, kont.kont );
             }
@@ -760,9 +799,20 @@ class Strand {
         case 'BLOCK':
             if (returned !== undefined) {
                 if (!isPid(returned)) return RaiseError(`Expected PID returned to BLOCK, got ${returned.type}`, kont);
-                kont.pid = returned;
+                kont.on = { target : 'JOIN', pid : returned };
             }
             return kont;
+        case 'SEND':
+            if (returned == undefined) return RaiseError(`Expected args returned to SEND, got undefined`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SEND, got something else`, kont);
+            let send_args = uncons(returned);
+            if (send_args.length != 2) return RaiseError(`send expects (send <pid> <msg>), got ${send_args.length} args`, kont);
+            let [ send_to, send_msg ] = send_args;
+            if (send_to == undefined) return RaiseError(`Expected PID arg for SEND, got undefined`, kont);
+            if (!isPid(send_to)) return RaiseError(`send expects a PID, got ${send_to.type}`, kont);
+            if (send_msg == undefined) return RaiseError(`Expected Msg arg for SEND, got undefined`, kont);
+            this.sendMessage( send_to, send_msg );
+            return Return( send_msg, kont.env, kont.kont );
         case 'YIELD':
             if (returned !== undefined) kont.result = returned;
             return kont;
