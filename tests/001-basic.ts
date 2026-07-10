@@ -135,11 +135,20 @@ function uncons (list : LIST) : TERM[] {
 
 function eq (lhs : TERM, rhs : TERM) : boolean {
     switch (true) {
+    case isNil(lhs)     && isNil(rhs)     : return true;
     case isError(lhs)   && isError(rhs)   : return lhs.error === rhs.error;
     case isLiteral(lhs) && isLiteral(rhs) : return lhs.value == rhs.value;
     case isSym(lhs)     && isSym(rhs)     : return lhs.ident == rhs.ident;
     case isPid(lhs)     && isPid(rhs)     : return lhs.ident == rhs.ident;
-    case isCons(lhs)    && isCons(rhs)    : return eq(lhs.first, rhs.first)   && eq(lhs.rest, rhs.rest);
+    case isCons(lhs)    && isCons(rhs)    : {
+        // iterate the spines (recursing per cell would blow the JS stack on long lists)
+        while (isCons(lhs) && isCons(rhs)) {
+            if (!eq(lhs.first, rhs.first)) return false;
+            lhs = lhs.rest;
+            rhs = rhs.rest;
+        }
+        return isNil(lhs) && isNil(rhs);
+    }
     case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && lhs.env === rhs.env;
     case isBuiltin(lhs) && isBuiltin(rhs) : return eq(lhs.params, rhs.params) && lhs.body === rhs.body && lhs.name == rhs.name;
     default : return false;
@@ -177,6 +186,24 @@ function parse (source : string) : TERM[] {
 
     let done  : any[] = [];
     let stack : any[] = [];
+
+    const isQuoteFrame = (frame : any) : boolean => Array.isArray(frame) && frame.quoted === true;
+
+    // a completed term lands in the enclosing frame (or `done` at top level);
+    // a quote frame is complete as soon as it holds its one datum
+    const emit = (term : any) : void => {
+        let tos = stack.at(-1);
+        if (tos == undefined) {
+            done.push(term);
+        } else {
+            tos.push(term);
+            if (isQuoteFrame(tos) && tos.length == 2) {
+                stack.pop();
+                emit(list(...tos));
+            }
+        }
+    }
+
     while (tokens.length > 0) {
         //console.log('TOKENS: ', tokens);
         //console.log('STACK:  ', stack);
@@ -186,47 +213,38 @@ function parse (source : string) : TERM[] {
         case '(':
             stack.push([]);
             break;
-        case ')':
-            let lst = list(...stack.pop()!);
-            if (stack.at(-1) == undefined) {
-                done.push(lst);
-            } else {
-                stack.at(-1)!.push(lst);
-            }
+        case ')': {
+            let frame = stack.pop();
+            if (frame == undefined)  throw new Error(`PARSE ERROR: unexpected ')'`);
+            if (isQuoteFrame(frame)) throw new Error(`PARSE ERROR: dangling ' before ')'`);
+            emit(list(...frame));
             break;
-        case "'":
-            stack.push([ sym('quote') ]);
-            if (tokens.at(0) != '(') {
-                tokens = [ tokens.shift()!, ')', ...tokens ];
-            }
+        }
+        case "'": {
+            let qframe : any = [ sym('quote') ];
+            qframe.quoted = true;
+            stack.push(qframe);
             break;
+        }
         default:
-            let tos = stack.at(-1);
-            if (tos == undefined) {
-                stack = tos = [];
-            }
-            if (token == '#true') {
-                tos.push(bool(true));
+            if (token.startsWith('"')) {
+                if (token.length < 2 || !token.endsWith('"')) throw new Error(`PARSE ERROR: unterminated string ${token}`);
+                emit(str(token.slice(1, -1)));
+            } else if (token == '#true') {
+                emit(bool(true));
             } else if (token == '#false') {
-                tos.push(bool(false));
-            } else if (token.startsWith('"')) {
-                tos.push(str(token));
-            } else if (!isNaN(Number(token))) {
-                tos.push(num(Number(token)));
+                emit(bool(false));
+            } else if (/^-?\d+(\.\d+)?$/.test(token)) {
+                emit(num(Number(token)));
             } else {
-                tos.push(sym(token));
+                emit(sym(token));
             }
         }
     }
 
-    while (stack.length > 0) {
-        let next  = stack.pop();
-        let token = Array.isArray(next) ? list(...next) : next;
-        if (stack.at(-1) === undefined) {
-            done.push(token);
-        } else {
-            stack.at(-1)!.push(token);
-        }
+    if (stack.length > 0) {
+        if (isQuoteFrame(stack.at(-1))) throw new Error(`PARSE ERROR: ' at end of input`);
+        throw new Error(`PARSE ERROR: unclosed '('`);
     }
 
     return done;
@@ -625,6 +643,7 @@ class Strand {
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
         let pid   = newPid(++this.PID_SEQ);
         let local = newEnv( env );
+        if (ppid != undefined) bind( sym('$ppid'), ppid, local );
 
         let kont : Kontinue = Halt( local, nil );
         if (exprs.length > 0) {
@@ -695,12 +714,13 @@ class Strand {
             if (isCons(expr)) {
                 let head = car(expr);
                 if (isSym(head) && head.ident === 'defun') {
-                    let [ name, params, body ] = uncons(cdr(expr));
+                    let [ name, params, ...body_exprs ] = uncons(cdr(expr));
                     if (name   === undefined) throw new Error(`defun <name> ... duh!`);
                     if (params === undefined) throw new Error(`defun <name> <params> ... duh!`);
-                    if (body   === undefined) throw new Error(`defun <name> <params> <body>... duh!`);
+                    if (body_exprs.length == 0) throw new Error(`defun <name> <params> <body>... duh!`);
                     if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
                     if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
+                    let body = body_exprs.length == 1 ? body_exprs[0] : list(sym('do'), ...body_exprs);
                     env = bind( name, lambda( params, body, env ), env );
                 } else {
                     to_run.push(expr);
@@ -742,6 +762,12 @@ class Strand {
             case 'YIELD'  : return proc;
             case 'RETURN' :
                 let value = proc.kont.value;
+                // an ERROR term is never a value: fault the process at the
+                // site that produced it instead of letting it flow onward
+                if (isError(value)) {
+                    proc.kont = ThrowError( value, proc.kont );
+                    return proc;
+                }
                 proc.kont = proc.kont.kont;
                 proc.kont = this.kontinue( proc, value );
                 quota--;
@@ -790,28 +816,50 @@ class Strand {
                             next = EvalExpr( exprs.pop()!, kont.env, Drop( kont.env, next ) )
                         }
                         return next;
-                    case 'lambda' :
+                    case 'lambda' : {
                         let params = car(tail);
-                        let body   = cadr(tail);
+                        let rest   = cdr(tail);
                         if (!isList(params)) return RaiseError(`Params should be a list, not ${pprint(params)} in lambda`, kont);
+                        if (!isCons(rest))   return RaiseError(`lambda expects a body`, kont);
+                        let body = isNil(rest.rest) ? rest.first : cons(sym('do'), rest);
                         return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
-                    case 'let':
+                    }
+                    case 'let': {
                         let name  = car(tail);
-                        let value = cadr(tail);
-                        if (!isSym(name)) return RaiseError(`Name should be a sym, not ${pprint(name)} in let`, kont);
-                        return EvalExpr( value, kont.env, Define( name, kont.env, kont.kont ));
+                        let rest  = cdr(tail);
+                        if (!isSym(name))  return RaiseError(`Name should be a sym, not ${pprint(name)} in let`, kont);
+                        if (!isCons(rest)) return RaiseError(`let expects (let <name> <value>)`, kont);
+                        return EvalExpr( rest.first, kont.env, Define( name, kont.env, kont.kont ));
+                    }
                     case 'quote':
                         return Return( car(tail), kont.env, kont.kont );
                     case 'yield':
                         return EvalExpr( car(tail), kont.env, Yield( kont.env, kont.kont ) );
                     case 'fork':
-                        return Return( this.spawnProcess([ car(tail) ], kont.env, proc.pid ), kont.env, Yield( kont.env, kont.kont ) );
+                        return Return( this.spawnProcess( uncons(tail), kont.env, proc.pid ), kont.env, Yield( kont.env, kont.kont ) );
                     case 'join':
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     case 'send':
                         return EvalArgs( tail, [], kont.env, Send( kont.env, kont.kont ) );
                     case 'syscall':
                         return EvalArgs( tail, [], kont.env, Syscall( kont.env, kont.kont ) );
+                    }
+                }
+                // special form with an empty tail: report the arity instead of
+                // falling through to a misleading "Unable to find X in Env"
+                if (isSym(head) && isNil(tail)) {
+                    switch (head.ident) {
+                    case 'if'      :
+                    case 'do'      :
+                    case 'lambda'  :
+                    case 'let'     :
+                    case 'quote'   :
+                    case 'yield'   :
+                    case 'fork'    :
+                    case 'join'    :
+                    case 'send'    :
+                    case 'syscall' :
+                        return RaiseError(`${head.ident} expects arguments, got none`, kont);
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -1065,8 +1113,8 @@ if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
 let env = newEnv();
 env = bind( sym('@ARGV'),    list( ...process.argv.map((arg) => str(arg))), env );
-env = bind( sym('time'),     liftUnOp('time',     (t) => { console.time((t as Str).value); return nil; }),     env );
-env = bind( sym('time/end'), liftUnOp('time/end', (t) => { console.timeEnd((t as Str).value); return nil; }),  env );
+env = bind( sym('time'),     liftUnOp('time',     (t) => { if (!isStr(t)) return raise(`time expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
+env = bind( sym('time/end'), liftUnOp('time/end', (t) => { if (!isStr(t)) return raise(`time/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
 env = initalizeEnv( env );
 
 async function main () {
@@ -1095,7 +1143,10 @@ async function main () {
     console.groupEnd();
 }
 
-main();
+main().catch((e) => {
+    console.error(String(e));
+    process.exit(1);
+});
 
 /*
 
