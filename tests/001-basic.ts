@@ -463,15 +463,58 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 // -----------------------------------------------------------------------------
 
+function haltKey (pid : Pid)        : string { return `halt:${pid.ident}` }
+function mailKey (chan_id : number) : string { return `mail:${chan_id}`   }
+
 type Process = { pid : Pid, kont : Kontinue, steps : number }
 
 class Strand {
     public running : Process[]             = [];
     public halted  : Map<number,Process>   = new Map<number,Process>();
-    public blocked : Map<number,Process[]> = new Map<number,Process[]>();
+    public blocked : Map<string,Process[]> = new Map<string,Process[]>();
+    public procs   : Map<number,Process>   = new Map<number,Process>();
 
     private PID_SEQ       = 0;
     private DEFAULT_QUOTA = 1000;
+
+    private awaitKey (key : string, proc : Process) : void {
+        if (DEBUG) console.log(`#### : Blocking ${pprint(proc.pid)} on ${key}`);
+        let waiters = this.blocked.get(key) ?? [];
+        this.blocked.set(key, [ ...waiters, proc ]);
+    }
+
+    private resumeWaiter (proc : Process, resumed : TERM) : void {
+        if (proc.kont.type == 'HALT' || proc.kont.type == 'ERR')
+            throw new Error(`Cannot resume a finished process`);
+        if (DEBUG) console.log(`<<<< : Resuming ${pprint(proc.pid)}`);
+        proc.kont = Return( resumed, proc.kont.kont.env, proc.kont.kont );
+        this.enqueueProcess(proc);
+    }
+
+    private faultWaiter (proc : Process, error : ERROR) : void {
+        if (DEBUG) console.log(`<<<< : Faulting ${pprint(proc.pid)}`);
+        proc.kont = ThrowError( error, proc.kont );
+        this.enqueueProcess(proc);
+    }
+
+    // NOTE: resumes ALL waiters with the same value. Right for halt
+    // keys (join is a broadcast); mail keys only ever have one waiter
+    // (the mailbox owner). A shared first-class channel would need a
+    // deliver-to-one variant.
+    private deliver (key : string, value : TERM) : void {
+        let waiters = this.blocked.get(key);
+        if (waiters == undefined) return;
+        this.blocked.delete(key);
+        waiters.forEach((p) => this.resumeWaiter(p, value));
+    }
+
+    private deliverFault (key : string, error : ERROR) : void {
+        let waiters = this.blocked.get(key);
+        if (waiters == undefined) return;
+        this.blocked.delete(key);
+        waiters.forEach((p) => this.faultWaiter(p, error));
+    }
+
 
     private enqueueProcess (proc : Process) : void {
         this.running.unshift(proc);
@@ -486,52 +529,26 @@ class Strand {
     }
 
     private blockProcess (blocker_pid : Pid, blockee : Process) : void {
-        if (DEBUG) console.log(`#### : Blocking ${pprint(blockee.pid)} on ${pprint(blocker_pid)}`);
-        if (this.blocked.has( blocker_pid.ident )) {
-            let blockees = this.blocked.get( blocker_pid.ident )!;
-            this.blocked.set( blocker_pid.ident, [ ...blockees, blockee ] );
+        let finished = this.halted.get( blocker_pid.ident );
+        if (finished == undefined) {
+            this.awaitKey( haltKey(blocker_pid), blockee );
+        } else if (finished.kont.type == 'HALT') {
+            if (finished.kont.result == undefined) throw new Error(`Expected result in HALT!`);
+            this.resumeWaiter( blockee, finished.kont.result );
+        } else if (finished.kont.type == 'ERR') {
+            this.faultWaiter( blockee, finished.kont.error );
         } else {
-            if (this.halted.has( blocker_pid.ident )) {
-                if (DEBUG) console.log(`#### : Blocker ${pprint(blocker_pid)} is Halted, ....`);
-                let blocker = this.halted.get( blocker_pid.ident )!;
-                let kont    = blocker.kont;
-                if (kont.type != 'HALT') throw new Error(`The halted process should have HALT`);
-                let result  = kont.result;
-                if (result == undefined) throw new Error(`Got nothing back from blocked process, WTF!`);
-                let next = blockee.kont;
-                if (next.type == 'HALT') {
-                    next.result = result;
-                    blockee.kont = next;
-                } else {
-                    blockee.kont = Return( result, next.kont.env, next.kont );
-                }
-                if (DEBUG) console.log(`<<<< : Resuming ${pprint(blockee.pid)}`);
-                this.enqueueProcess(blockee);
-            } else {
-                this.blocked.set( blocker_pid.ident, [ blockee ] );
-            }
+            throw new Error(`A halted process should be HALT or ERR`);
         }
     }
 
     private haltProcess (proc : Process) : void {
+        if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
         if (proc.kont.type == 'HALT') {
             if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
-            if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
-            if (this.blocked.has( proc.pid.ident )) {
-                let result = proc.kont.result;
-                let procs  = this.blocked.get( proc.pid.ident )!;
-                this.blocked.delete( proc.pid.ident );
-                if (DEBUG) console.log(`#### : ${pprint(proc.pid)} is blocking [ ${procs.map((p) => pprint(p.pid)).join(', ')} ]`);
-                procs.forEach((p) => {
-                    if (p.kont.type != 'HALT' && p.kont.type != 'ERR') {
-                        p.kont = Return( result, p.kont.kont.env, p.kont.kont );
-                        if (DEBUG) console.log(`<<<< : Unblocking ${pprint(p.pid)}`);
-                        this.enqueueProcess(p);
-                    } else {
-                        if (DEBUG) console.log(`#### : ${pprint(p.pid)} is already halted, cannot join ${pprint(proc.pid)}`);
-                    }
-                });
-            }
+            this.deliver( haltKey(proc.pid), proc.kont.result );
+        } else if (proc.kont.type == 'ERR') {
+            this.deliverFault( haltKey(proc.pid), proc.kont.error );
         }
         this.halted.set( proc.pid.ident, proc );
     }
@@ -559,8 +576,10 @@ class Strand {
             }
         }
 
+        let proc : Process = { pid, kont, steps : 0 };
+        this.procs.set( pid.ident, proc );
         // push this so it runs immedately
-        this.running.push({ pid, kont, steps : 0 });
+        this.running.push(proc);
         return pid;
     }
 
@@ -921,20 +940,28 @@ let exprs = parse(source || test_source);
 if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
 let strand = new Strand();
+console.time('...run');
 let halted = strand.run(exprs, env);
+console.timeEnd('...run');
+
 
 console.group('DONE:');
-for (const proc of halted) {
-    if (proc.kont.type == 'HALT') {
-        console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-    } else if (proc.kont.type == 'ERR') {
-        console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
-    } else {
-        console.log(pprint(proc.pid), ' WTF! is this?', proc);
+if (DEBUG) {
+    for (const proc of halted) {
+        if (proc.kont.type == 'HALT') {
+            console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
+        } else if (proc.kont.type == 'ERR') {
+            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+        } else {
+            console.log(pprint(proc.pid), ' WTF! is this?', proc);
+        }
     }
+} else {
+    console.log("TOTAL : ", halted.length);
+    console.log("HALT  : ", halted.filter((p) => p.kont.type == 'HALT').length);
+    console.log("ERROR : ", halted.filter((p) => p.kont.type == 'ERR').length);
 }
 console.groupEnd();
-
 
 /*
 

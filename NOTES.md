@@ -3,6 +3,36 @@
 <!----------------------------------------------------------------------------->
 
 - restore global quota
+
+<!----------------------------------------------------------------------------->
+## Performance / Porting decisions (2026-07-09)
+<!----------------------------------------------------------------------------->
+
+Measured: ~30M kontinue-steps/sec (fib 27 = 24.15M steps in ~0.83s).
+GC is ~5% of runtime (1000 scavenges @ 0.045ms avg, one major GC) —
+allocation churn is a non-issue in V8, do NOT pool/reuse kont frames
+(same verdict as the Perl version, different mechanism: bump-pointer
+nursery makes short-lived frames nearly free; pooling would promote
+them to old space and defeat the scavenger).
+
+Real costs, in order: (1) `new Map` per lambda call + string hashing
+per lookup, (2) re-traversing syntax cons cells every evaluation
+(uncons per `if` per iteration), (3) megamorphic kont property access.
+
+DECIDED: no call/cc ambitions — continuations commit to stack-shaped.
+The kont chain is only ever used as a stack (ScopeExit collapse = pop),
+so it can become a per-process frame stack (array/Vec) when porting.
+
+Plan of record: land actors first, let the special-form set settle,
+THEN do a lower/compile pass (special forms dispatched at compile time,
+variables resolved to (depth, slot) so envs become plain arrays) as the
+first step of the compiled-language port. The lowered IR is the thing
+that gets ported; the TS version is the executable spec.
+
+Porting landmine: defun creates env<->lambda reference cycles by design
+(the lambda closes over the env that contains it). A refcounting port
+(Rc, Perl-style) leaks these — needs weak parent links, an arena per
+Strand, or a real GC for the term heap.
 - catch ERRs before they go too far
     - check for them in RETURN?
 
