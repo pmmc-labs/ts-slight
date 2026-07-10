@@ -39,7 +39,7 @@
 (let is-odd?  (fork (is-it-odd?  $reply-to)))
 
 (pprint $reply-to)
-(send is-even? (list 'IS-EVEN? 100 is-odd?))
+(send is-even? (list 'IS-EVEN? 21 is-odd?))
 (send is-even? (list 'IS-EVEN? 36 is-odd?))
 (send is-even? (list 'IS-EVEN? 57 is-odd?))
 (send is-even? (list 'IS-EVEN? 92 is-odd?))
