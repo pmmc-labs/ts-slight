@@ -187,7 +187,7 @@ function parse (source : string) : TERM[] {
     let done  : any[] = [];
     let stack : any[] = [];
 
-    const isQuoteFrame = (frame : any) : boolean => Array.isArray(frame) && frame.quoted === true;
+    const isQuoteFrame = (frame : any) : boolean => Array.isArray(frame) && (frame as any).quoted === true;
 
     // a completed term lands in the enclosing frame (or `done` at top level);
     // a quote frame is complete as soon as it holds its one datum
