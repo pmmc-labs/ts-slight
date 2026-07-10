@@ -721,6 +721,7 @@ class Strand {
                     if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
                     if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
                     let body = body_exprs.length == 1 ? body_exprs[0] : list(sym('do'), ...body_exprs);
+                    if (body === undefined) throw new Error(`defun <name> <params> ... really shouldnt happen, just typescript being annoying`);
                     env = bind( name, lambda( params, body, env ), env );
                 } else {
                     to_run.push(expr);
