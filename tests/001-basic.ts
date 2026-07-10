@@ -309,8 +309,8 @@ function liftNumBoolOp (name : string, f : (n : number, m : number) => boolean) 
 
 // -----------------------------------------------------------------------------
 
-function initalizeEnv () : Env {
-    let env : Env = newEnv();
+function initalizeEnv (core : Env | undefined = undefined) : Env {
+    let env : Env = core == undefined ? newEnv() : newEnv( core );
     env = bind( sym('+'), liftNumBinOp('+', (n, m) => n + m), env );
     env = bind( sym('-'), liftNumBinOp('-', (n, m) => n - m), env );
     env = bind( sym('*'), liftNumBinOp('*', (n, m) => n * m), env );
@@ -842,8 +842,6 @@ class Strand {
 
 // -----------------------------------------------------------------------------
 
-let env = initalizeEnv();
-
 let test_source = `
 
     (defun adder (n m) (+ n m))
@@ -989,13 +987,26 @@ let test_source = `
     )
 `;
 
-let source = ``;
+let source = `
+
+
+
+
+`;
+
 
 let exprs = parse(source || test_source);
 
 if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
+let env = newEnv();
+env = bind( sym('@ARGV'),    list( ...process.argv.map((arg) => str(arg))), env );
+env = bind( sym('time'),     liftUnOp('time',     (t) => { console.time((t as Str).value); return nil; }),     env );
+env = bind( sym('time/end'), liftUnOp('time/end', (t) => { console.timeEnd((t as Str).value); return nil; }),  env );
+env = initalizeEnv( env );
+
 let strand = new Strand();
+
 console.time('...run');
 let halted = strand.run(exprs, env);
 console.timeEnd('...run');
