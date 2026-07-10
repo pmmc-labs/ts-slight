@@ -854,6 +854,11 @@ let test_source = `
         (if (== n 0) 1
             (* n (fact (- n 1)))))
 
+    (defun fact-fork (n)
+        (if (== n 0)
+            (fork 1)
+            (fork (* n (join (fact-fork (- n 1)))))))
+
     (defun fib (n)
         (if (< n 2) n
             (+ (fib (- n 1)) (fib (- n 2)))))
@@ -978,6 +983,7 @@ let test_source = `
             (join (fork (+ 10 20)))
             (join (fork (+ (yield 10) (yield 20))))
             (join pid)
+            (- (join (fact-fork 6)) (+ (* (join (fact-fork 3)) 100) 90))
         )
         "<- all done!"
     )
@@ -993,7 +999,6 @@ let strand = new Strand();
 console.time('...run');
 let halted = strand.run(exprs, env);
 console.timeEnd('...run');
-
 
 console.group('DONE:');
 if (DEBUG) {
@@ -1015,30 +1020,5 @@ console.groupEnd();
 
 /*
 
-
-    (let pid1 (fork (+ (yield 10) (yield 20))))
-    (let pid2 (fork (+ 10 20)))
-    (let result (+ (join pid1) (join pid2)))
-
-
-    (let pid (fork (do
-            (pprint (list 'in-fork $$))
-            (yield (pprint (list 'in-fork $$)))
-        )))
-    (pprint (list 'in-root-child-pid pid))
-    (pprint (list 'in-root $$))
-
-(defun for-loop (init test next body)
-    (if (test (init))
-        (do
-            (body (init))
-            (for-loop (lambda () (next (init))) test next body))
-        ()))
-
-(for-loop
-    (lambda () 0)
-    (lambda (i) (< i 10))
-    (lambda (i) (+ i 1))
-    (lambda (i) (pprint i)))
 
 */

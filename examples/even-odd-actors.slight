@@ -1,0 +1,50 @@
+
+(defun is-it-even? (reply-to)
+    (do
+        (pprint 'running-is-it-even?)
+        (let msg (recv))
+        (pprint (list 'is-it-even? 'got msg))
+        (let tag (head msg))
+        (if (eq? tag 'IS-EVEN?) (do
+            (let n        (head (tail msg)))
+            (let ask-odd? (head (tail (tail msg))))
+            (if (== n 0)
+                (send reply-to (list 'IT-IS-EVEN!))
+                (do
+                    (send ask-odd? (list 'IS-ODD? (- n 1) $$))))
+                    (yield (is-it-even? reply-to)))
+            ()
+        )))
+
+(defun is-it-odd? (reply-to)
+    (do
+        (pprint 'running-is-it-odd?)
+        (let msg (recv))
+        (pprint (list 'is-it-odd? 'got msg))
+        (let tag (head msg))
+        (if (eq? tag 'IS-ODD?) (do
+            (let n        (head (tail msg)))
+            (let ask-even? (head (tail (tail msg))))
+            (if (== n 0)
+                (send reply-to (list 'IT-IS-ODD!))
+                (do
+                    (send ask-even? (list 'IS-EVEN? (- n 1) $$))))
+                    (yield (is-it-odd? reply-to)))
+            ()
+        )))
+
+(let $reply-to $$)
+
+(let is-even? (fork (is-it-even? $reply-to)))
+(let is-odd?  (fork (is-it-odd?  $reply-to)))
+
+(pprint $reply-to)
+(send is-even? (list 'IS-EVEN? 100 is-odd?))
+(send is-even? (list 'IS-EVEN? 36 is-odd?))
+(send is-even? (list 'IS-EVEN? 57 is-odd?))
+(send is-even? (list 'IS-EVEN? 92 is-odd?))
+
+(pprint (list (recv) (recv) (recv) (recv)))
+
+(send is-even? (list 'STOP))
+(send is-odd?  (list 'STOP))
