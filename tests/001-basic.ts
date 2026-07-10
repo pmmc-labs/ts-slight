@@ -353,6 +353,16 @@ function initalizeEnv (core : Env | undefined = undefined) : Env {
 
 // -----------------------------------------------------------------------------
 
+const SYSCALLS : Map<string, (args : TERM[]) => Promise<TERM>> = new Map();
+
+SYSCALLS.set('sleep', (args : TERM[]) : Promise<TERM> => {
+    let ms = args[0];
+    if (ms == undefined || !isNum(ms)) return Promise.reject(`sleep expects (ms : NUM)`);
+    return new Promise((resolve) => setTimeout(() => resolve(ms), ms.value));
+});
+
+// -----------------------------------------------------------------------------
+
 type Kontinuation = { env : Env, kont : Kontinue }
 
 type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
@@ -364,6 +374,7 @@ type Define    = { type : 'DEFINE',    name : Sym                      } & Konti
 type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
 
 type Send      = { type : 'SEND'       } & Kontinuation
+type Syscall   = { type : 'SYSCALL'    } & Kontinuation
 type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 type Drop      = { type : 'DROP'       } & Kontinuation
 type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
@@ -380,6 +391,7 @@ type Kontinue =
     | Return
     | Block
     | Send
+    | Syscall
     | Yield
     | Halt
     | Err
@@ -400,7 +412,8 @@ function pprintKont (kont : Kontinue) : string {
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;
     case 'SEND'       : break;
-    case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : 'RECV')}`; break;
+    case 'SYSCALL'    : break;
+    case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
     case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
@@ -456,6 +469,10 @@ function Send (env : Env, kont : Kontinue) : Send {
     return { type : 'SEND', env, kont }
 }
 
+function Syscall (env : Env, kont : Kontinue) : Syscall {
+    return { type : 'SYSCALL', env, kont }
+}
+
 function Yield (env : Env, kont : Kontinue, result : TERM | undefined = undefined) : Yield {
     return { type : 'YIELD', result, env, kont }
 }
@@ -473,12 +490,14 @@ function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
 
 function haltKey (pid : Pid)        : string { return `halt:${pid.ident}` }
 function mailKey (chan_id : number) : string { return `mail:${chan_id}`   }
+function sysKey (n : number)        : string { return `sys:${n}`          }
 
 type Chan = { id : number, queue : TERM[] }
 
 type WaitFor =
-    | { target : 'JOIN', pid : Pid }
+    | { target : 'JOIN',    pid : Pid }
     | { target : 'RECV' }
+    | { target : 'SYSCALL', name : string, args : TERM[] }
 
 type Process = { pid : Pid, kont : Kontinue, steps : number, mailbox : Chan }
 
@@ -490,7 +509,10 @@ class Strand {
 
     private PID_SEQ       = 0;
     private CHAN_SEQ      = 0;
-    private DEFAULT_QUOTA = 1000;
+    private SYS_SEQ       = 0;
+    private DEFAULT_QUOTA = 10000;
+    private inflight      = 0;
+    private wake : (() => void) | undefined;
 
     private awaitKey (key : string, proc : Process) : void {
         if (DEBUG) console.log(`#### : Blocking ${pprint(proc.pid)} on ${key}`);
@@ -545,9 +567,26 @@ class Strand {
         }
     }
 
+    private async dispatchSyscall (name : string, args : TERM[]) : Promise<TERM> {
+        let sys = SYSCALLS.get(name);
+        if (sys == undefined) return Promise.reject(`Unknown syscall '${name}'`);
+        return sys(args);
+    }
 
     private enqueueProcess (proc : Process) : void {
         this.running.unshift(proc);
+        if (this.wake != undefined) {
+            this.wake();
+            this.wake = undefined;
+        }
+    }
+
+    private hop () : Promise<void> {
+        return new Promise((resolve) => setImmediate(resolve));
+    }
+
+    private sleepUntilWoken () : Promise<void> {
+        return new Promise((resolve) => this.wake = resolve);
     }
 
     private yieldProcess (proc : Process) : void {
@@ -602,7 +641,53 @@ class Strand {
         return pid;
     }
 
-    run (exprs : TERM[], env : Env) : Process[] {
+    private park (proc : Process) : void {
+        switch (proc.kont.type) {
+        case 'ERR'   :
+        case 'HALT'  :
+            this.haltProcess(proc);
+            break;
+        case 'YIELD' :
+            this.yieldProcess(proc);
+            break;
+        case 'BLOCK' : {
+            let wait = proc.kont.on;
+            if (wait === undefined) throw new Error(`Expected wait target from BLOCK, got undefined`);
+            switch (wait.target) {
+            case 'JOIN':
+                this.blockProcess( wait.pid, proc );
+                break;
+            case 'RECV':
+                this.awaitKey( mailKey(proc.mailbox.id), proc );
+                break;
+            case 'SYSCALL': {
+                let key = sysKey(++this.SYS_SEQ);
+                this.awaitKey( key, proc );
+                this.inflight++;
+                this.dispatchSyscall(wait.name, wait.args)
+                    .then((result) => { this.inflight--; this.deliver(key, result); },
+                          (e)      => { this.inflight--; this.deliverFault(key, raise(String(e))); });
+                break;
+            }
+            }
+            break;
+        }
+        default:
+            if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
+            this.enqueueProcess(proc);
+        }
+    }
+
+    private sweepDeadlocked () : void {
+        let procs = [ ...this.blocked.values() ].flat();
+        this.blocked.clear();
+        procs.forEach((p) => {
+            p.kont = RaiseError('DEADLOCKED!', p.kont);
+            this.enqueueProcess(p);
+        });
+    }
+
+    async run (exprs : TERM[], env : Env) : Promise<Process[]> {
         env = newEnv( env ); // for the (defun)s
 
         let to_run = [];
@@ -628,42 +713,16 @@ class Strand {
         let init_pid = this.spawnProcess( to_run, env, undefined ); // no parent
 
         while (true) {
-
-            while (this.running.length > 0) {
+            if (this.running.length > 0) {
                 let proc = this.running.pop()!;
                 if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
-                proc = this.step(proc, this.DEFAULT_QUOTA);
-                switch (proc.kont.type) {
-                case 'ERR'   :
-                case 'HALT'  :
-                    this.haltProcess(proc);
-                    break;
-                case 'YIELD' :
-                    this.yieldProcess(proc);
-                    break;
-                case 'BLOCK' :
-                    let wait = proc.kont.on;
-                    if (wait === undefined) throw new Error(`Expected wait target from BLOCK, got undefined`);
-                    if (wait.target == 'JOIN') {
-                        this.blockProcess( wait.pid, proc );
-                    } else {
-                        this.awaitKey( mailKey(proc.mailbox.id), proc );
-                    }
-                    break;
-                default:
-                    if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
-                    this.enqueueProcess(proc);
-                }
-            }
-
-            if (this.blocked.size > 0) {
-                let procs = [ ...this.blocked.values() ].flat();
-                this.blocked.clear();
-                //console.log(procs);
-                procs.forEach((p) => {
-                    p.kont = RaiseError('DEADLOCKED!', p.kont);
-                    this.enqueueProcess(p);
-                });
+                this.step(proc, this.DEFAULT_QUOTA);
+                this.park(proc);
+                await this.hop();
+            } else if (this.inflight > 0) {
+                await this.sleepUntilWoken();
+            } else if (this.blocked.size > 0) {
+                this.sweepDeadlocked();
             } else {
                 break;
             }
@@ -751,6 +810,8 @@ class Strand {
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     case 'send':
                         return EvalArgs( tail, [], kont.env, Send( kont.env, kont.kont ) );
+                    case 'syscall':
+                        return EvalArgs( tail, [], kont.env, Syscall( kont.env, kont.kont ) );
                     }
                 }
                 return EvalExpr(head, kont.env, EvalHead( tail, kont.env, kont.kont ) )
@@ -813,6 +874,14 @@ class Strand {
             if (send_msg == undefined) return RaiseError(`Expected Msg arg for SEND, got undefined`, kont);
             this.sendMessage( send_to, send_msg );
             return Return( send_msg, kont.env, kont.kont );
+        case 'SYSCALL':
+            if (returned == undefined) return RaiseError(`Expected args returned to SYSCALL, got undefined`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SYSCALL, got something else`, kont);
+            let sys_args = uncons(returned);
+            let sys_name = sys_args.shift();
+            if (sys_name == undefined) return RaiseError(`syscall expects (syscall '<name> args ...)`, kont);
+            if (!isSym(sys_name))      return RaiseError(`syscall expects a symbol name, got ${sys_name.type}`, kont);
+            return Block( kont.env, kont.kont, { target : 'SYSCALL', name : sys_name.ident, args : sys_args } );
         case 'YIELD':
             if (returned !== undefined) kont.result = returned;
             return kont;
@@ -1000,29 +1069,33 @@ env = bind( sym('time'),     liftUnOp('time',     (t) => { console.time((t as St
 env = bind( sym('time/end'), liftUnOp('time/end', (t) => { console.timeEnd((t as Str).value); return nil; }),  env );
 env = initalizeEnv( env );
 
-let strand = new Strand();
+async function main () {
+    let strand = new Strand();
 
-console.time('...run');
-let halted = strand.run(exprs, env);
-console.timeEnd('...run');
+    console.time('...run');
+    let halted = await strand.run(exprs, env);
+    console.timeEnd('...run');
 
-console.group('DONE:');
-if (DEBUG) {
-    for (const proc of halted) {
-        if (proc.kont.type == 'HALT') {
-            console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-        } else if (proc.kont.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
-        } else {
-            console.log(pprint(proc.pid), ' WTF! is this?', proc);
+    console.group('DONE:');
+    if (DEBUG) {
+        for (const proc of halted) {
+            if (proc.kont.type == 'HALT') {
+                console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
+            } else if (proc.kont.type == 'ERR') {
+                console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+            } else {
+                console.log(pprint(proc.pid), ' WTF! is this?', proc);
+            }
         }
+    } else {
+        console.log("TOTAL : ", halted.length);
+        console.log("HALT  : ", halted.filter((p) => p.kont.type == 'HALT').length);
+        console.log("ERROR : ", halted.filter((p) => p.kont.type == 'ERR').length);
     }
-} else {
-    console.log("TOTAL : ", halted.length);
-    console.log("HALT  : ", halted.filter((p) => p.kont.type == 'HALT').length);
-    console.log("ERROR : ", halted.filter((p) => p.kont.type == 'ERR').length);
+    console.groupEnd();
 }
-console.groupEnd();
+
+main();
 
 /*
 
