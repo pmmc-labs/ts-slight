@@ -11,156 +11,19 @@ import {
 } from '../src/terms.ts';
 import { parse } from '../src/parser.ts';
 import { initalizeEnv } from '../src/builtins.ts';
-
-// -----------------------------------------------------------------------------
-
-const SYSCALLS : Map<string, (args : TERM[]) => Promise<TERM>> = new Map();
-
-SYSCALLS.set('sleep', (args : TERM[]) : Promise<TERM> => {
-    let ms = args[0];
-    if (ms == undefined || !isNum(ms)) return Promise.reject(`sleep expects (ms : NUM)`);
-    return new Promise((resolve) => setTimeout(() => resolve(ms), ms.value));
-});
-
-// -----------------------------------------------------------------------------
-
-type Kontinuation = { env : Env, kont : Kontinue }
-
-type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
-type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Kontinuation
-type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
-type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
-type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
-type Define    = { type : 'DEFINE',    name : Sym                      } & Kontinuation
-type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
-
-type Send      = { type : 'SEND'       } & Kontinuation
-type Syscall   = { type : 'SYSCALL'    } & Kontinuation
-type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
-type Drop      = { type : 'DROP'       } & Kontinuation
-type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
-type Block     = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
-type Yield     = { type : 'YIELD', result : TERM | undefined } & Kontinuation
-type Halt      = { type : 'HALT',  result : TERM | undefined, env : Env }
-
-type Kontinue =
-    | EvalExpr
-    | EvalHead
-    | EvalArgs
-    | Apply
-    | Drop
-    | Return
-    | Block
-    | Send
-    | Syscall
-    | Yield
-    | Halt
-    | Err
-    | Define
-    | Cond
-    | ScopeExit
-
-function pprintKont (kont : Kontinue) : string {
-    let kontStr  = kont.type.padStart(11, " ");
-    switch (kont.type) {
-    case 'EVAL_EXPR'  : kontStr += ` =: ${pprint(kont.expr)}`;  break;
-    case 'EVAL_HEAD'  : kontStr += ` =: ${pprint(kont.args)}`;  break;
-    case 'APPLY'      : kontStr += ` =: ${pprint(kont.call)}`;  break;
-    case 'RETURN'     : kontStr += ` =: ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : kontStr += ` =: ${pprint(kont.name)}`;  break;
-    case 'EVAL_ARGS'  : kontStr += ` =: ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
-    case 'DROP'       : break;
-    case 'COND'       : break;
-    case 'SCOPE_EXIT' : break;
-    case 'SEND'       : break;
-    case 'SYSCALL'    : break;
-    case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
-    case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
-    case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
-    case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
-    }
-    return kontStr;
-}
-
-function ThrowError (error : ERROR, kont : Kontinue)  : Err {
-    return { type : 'ERR', error, env : kont.env, kont }
-}
-
-function RaiseError   (error : string, kont : Kontinue) : Err {
-    return ThrowError( raise(error), kont )
-}
-
-function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {
-    return { type : 'EVAL_EXPR', expr, env, kont }
-}
-
-function EvalHead (args : LIST, env : Env, kont : Kontinue) : EvalHead {
-    return { type : 'EVAL_HEAD', args, env, kont }
-}
-
-function EvalArgs (args : LIST, done : TERM[], env : Env, kont : Kontinue) : EvalArgs {
-    return { type : 'EVAL_ARGS', args, done, env, kont }
-}
-
-function Apply (call : CALLABLE, env : Env, kont : Kontinue) : Apply {
-    return { type : 'APPLY', call, env, kont }
-}
-
-function Return (value : TERM, env : Env, kont : Kontinue) : Return {
-    return { type  : 'RETURN', value, env, kont }
-}
-
-function Define (name : Sym, env : Env, kont : Kontinue) : Define {
-    return { type  : 'DEFINE', name, env, kont }
-}
-
-function Cond (if_true : TERM, if_false : TERM, env : Env, kont : Kontinue) : Cond {
-    return { type : 'COND', if_true, if_false, env, kont }
-}
-
-function Drop (env : Env, kont : Kontinue) : Drop {
-    return { type : 'DROP', env, kont }
-}
-
-function Block (env : Env, kont : Kontinue, on : WaitFor | undefined = undefined) : Block {
-    return { type : 'BLOCK', on, env, kont }
-}
-
-function Send (env : Env, kont : Kontinue) : Send {
-    return { type : 'SEND', env, kont }
-}
-
-function Syscall (env : Env, kont : Kontinue) : Syscall {
-    return { type : 'SYSCALL', env, kont }
-}
-
-function Yield (env : Env, kont : Kontinue, result : TERM | undefined = undefined) : Yield {
-    return { type : 'YIELD', result, env, kont }
-}
-
-function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
-    return { type : 'HALT', result, env }
-}
-
-function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
-    if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont);
-    return { type : 'SCOPE_EXIT', env, kont }
-}
+import { SYSCALLS } from '../src/syscalls.ts';
+import {
+    type Kontinue, type Chan, type WaitFor, type Process,
+    pprintKont, ThrowError, RaiseError,
+    EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
+    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
+} from '../src/konts.ts';
 
 // -----------------------------------------------------------------------------
 
 function haltKey (pid : Pid)        : string { return `halt:${pid.ident}` }
 function mailKey (chan_id : number) : string { return `mail:${chan_id}`   }
 function sysKey (n : number)        : string { return `sys:${n}`          }
-
-type Chan = { id : number, queue : TERM[] }
-
-type WaitFor =
-    | { target : 'JOIN',    pid : Pid }
-    | { target : 'RECV' }
-    | { target : 'SYSCALL', name : string, args : TERM[] }
-
-type Process = { pid : Pid, kont : Kontinue, steps : number, mailbox : Chan }
 
 class Strand {
     public running : Process[]             = [];
