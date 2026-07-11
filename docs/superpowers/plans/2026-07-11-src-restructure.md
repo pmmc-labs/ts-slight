@@ -42,8 +42,8 @@ The section banners (`// ----…----`) in `tests/001-basic.ts` mark the cut line
 - [ ] **Step 1: Capture baselines BEFORE any other change**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' > <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' > <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings > <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings > <scratchpad>/baseline-debug.txt
 wc -l <scratchpad>/baseline-plain.txt <scratchpad>/baseline-debug.txt
 ```
 
@@ -71,7 +71,7 @@ In `tsconfig.json`, inside `compilerOptions`, add after the `"isolatedModules": 
 - [ ] **Step 4: Verify nothing changed at runtime**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
 ```
 
 Expected: no output (exit 0).
@@ -130,8 +130,8 @@ import {
 - [ ] **Step 4: Verify against baseline**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-debug.txt
 npm run build
 ```
 
@@ -206,8 +206,8 @@ Prune now-unused names from the Task 2 import block if the build complains; othe
 - [ ] **Step 5: Verify against baseline**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-debug.txt
 npm run build
 ```
 
@@ -279,8 +279,8 @@ import {
 - [ ] **Step 4: Verify against baseline**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-debug.txt
 npm run build
 ```
 
@@ -361,8 +361,8 @@ Everything below the imports stays exactly as it is today: `test_source`, `let s
 - [ ] **Step 4: Verify against baseline**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-debug.txt
 npm run build
 ```
 
@@ -442,8 +442,8 @@ Also run: `node bin/slight.ts` — expected: usage line on stderr, exit code 1.
 - [ ] **Step 3: Full final verification**
 
 ```bash
-node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-plain.txt
-DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v '^\.\.\.run' | diff - <scratchpad>/baseline-debug.txt
+node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-plain.txt
+DEBUG=1 node tests/001-basic.ts 2>&1 | grep -v -e '^\.\.\.run' -e ExperimentalWarning -e trace-warnings | diff - <scratchpad>/baseline-debug.txt
 npm run build
 ```
 
