@@ -70,7 +70,7 @@ Strand, or a real GC for the term heap.
 
 → Error: The halted process should have HALT   [raw stack, everything dies]
 
-blockProcess (tests/001-basic.ts:496) asserts the halted blocker has a HALT kont — but since the error-isolation fix, halted also contains ERR processes, so the invariant is simply
+blockProcess (src/strand.ts) asserts the halted blocker has a HALT kont — but since the error-isolation fix, halted also contains ERR processes, so the invariant is simply
 false now.
 
 ### Bug 2 (wrong answer): child errors after the parent blocked
@@ -79,7 +79,7 @@ false now.
 (join p)
 → PID[1] ERRORED: E!DEADLOCKED!
 
-haltProcess (tests/001-basic.ts:515) only wakes waiters when the kont is HALT. An ERR'd child parks in halted without waking anyone, so its joiners strand and get misreported as
+haltProcess (src/strand.ts) only wakes waiters when the kont is HALT. An ERR'd child parks in halted without waking anyone, so its joiners strand and get misreported as
 deadlocked — the real error (Unable to find nope) is attributed to the wrong process and the wrong cause.
 
 ### Options;
@@ -100,7 +100,7 @@ helper makes it impossible for the two paths to disagree, which is exactly how t
 
 ### Smaller findings
 
-- Dead/misleading branch in blockProcess (tests/001-basic.ts:500): the next.type == 'HALT' check on the blockee can never be true — a process only reaches blockProcess from run's
+- Dead/misleading branch in blockProcess (src/strand.ts): the next.type == 'HALT' check on the blockee can never be true — a process only reaches blockProcess from run's
 BLOCK case, so its kont is always BLOCK. And if it somehow were HALT, overwriting its result with the blocker's result would be wrong anyway. Same for the != 'HALT' && != 'ERR' waiter
 guard in haltProcess — blocked processes always hold BLOCK konts. I'd replace both with if (kont.type != 'BLOCK') throw invariant checks; a guard that silently skips is where the
 next Bug-2-style misreport hides.
