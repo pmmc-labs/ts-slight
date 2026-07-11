@@ -21,6 +21,8 @@
     //"noUnusedParameters": true,
 
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "checkJs": true,
 
     "esModuleInterop": true,
