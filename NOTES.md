@@ -63,52 +63,11 @@ Strand, or a real GC for the term heap.
 ## Claude NOTES   
 <!----------------------------------------------------------------------------->
 
-### Bug 1 (crash): joining an already-errored child
-
-(let p (fork (nope)))
-(join p)
-
-→ Error: The halted process should have HALT   [raw stack, everything dies]
-
-blockProcess (src/strand.ts) asserts the halted blocker has a HALT kont — but since the error-isolation fix, halted also contains ERR processes, so the invariant is simply
-false now.
-
-### Bug 2 (wrong answer): child errors after the parent blocked
-
-(let p (fork (do (yield 0) (nope))))
-(join p)
-→ PID[1] ERRORED: E!DEADLOCKED!
-
-haltProcess (src/strand.ts) only wakes waiters when the kont is HALT. An ERR'd child parks in halted without waking anyone, so its joiners strand and get misreported as
-deadlocked — the real error (Unable to find nope) is attributed to the wrong process and the wrong cause.
-
-### Options;
-
-These are one decision with two code sites. The options:
-
-- (a) Deliver the ERROR as a value — the joiner receives the child's ERROR term as the join result. Pro: composes with join/collect (one failed child doesn't nuke the batch); ERRORs
-are already first-class data in your builtin channel. Con: errors silently launder — the joiner passes the ERROR to +, which re-raises as Must be numbers, duh!, and the original cause
-is gone. You'd also want an error? predicate builtin so programs can actually check.
-- (b) Propagate the fault — wake each waiter with p.kont = ThrowError(childKont.error, p.kont.kont) so joining a failed process fails the joiner with the child's error. Pro: no
-laundering; cascades up join chains naturally; and it's consistent with your deadlock policy, which already faults blocked processes rather than handing them a value. Con:
-join/collect can't gather partial results, and there's no way to inspect a failure until you have (try ...).
-- (c) Tagged results — join returns ('ok v) / ('err e). Most explicit, but taxes the common case and touches every join site.
-
-I'd do (b) now for consistency with DEADLOCKED!, and layer (a)'s behavior in later as join/catch or via try. Whichever you pick, implement it in both places — the halted branch of
-blockProcess and the wake loop of haltProcess. They currently duplicate the resume logic (Return(result, p.kont.kont.env, p.kont.kont)); extracting one resumeWaiter(waiter, blocker)
-helper makes it impossible for the two paths to disagree, which is exactly how these two bugs got out of sync in the first place.
-
 ### Smaller findings
 
-- Dead/misleading branch in blockProcess (src/strand.ts): the next.type == 'HALT' check on the blockee can never be true — a process only reaches blockProcess from run's
-BLOCK case, so its kont is always BLOCK. And if it somehow were HALT, overwriting its result with the blocker's result would be wrong anyway. Same for the != 'HALT' && != 'ERR' waiter
-guard in haltProcess — blocked processes always hold BLOCK konts. I'd replace both with if (kont.type != 'BLOCK') throw invariant checks; a guard that silently skips is where the
-next Bug-2-style misreport hides.
-- fork silently drops extra body exprs: (fork (a) (b)) runs only (a). spawnProcess already takes TERM[], so this.spawnProcess(uncons(tail), ...) gives you implicit-do semantics for
-free — that also matches how the root process is spawned.
 - Kont mutation (kont.result = returned, kont.pid = returned in the YIELD/HALT/BLOCK cases): fine while continuations are single-shot and freshly allocated, same caveat as the old
 EvalArgs.done — worth a NOTE comment so future-you doesn't reuse a kont.
-- Still open from the TODO (unchanged, just confirming): no global quota, env sharing, parser items.
+- Still open from the TODO (unchanged, just confirming): no global quota, env sharing.
 
 ### Env sharing. Since you've confirmed the leak is "parent binds after fork, child sees it," the options:
 
@@ -130,21 +89,6 @@ EvalArgs.done — worth a NOTE comment so future-you doesn't reuse a kont.
 
 I'd do (b) now — it's nearly free — and keep (c) in your pocket for if/when 
 mutation or set! enters the language.
-
-### Parser
-
-- '(...) steals the parent's ): 
-    - quote frames are never explicitly closed for lists. 
-    - Fix within the current design: mark quote frames, and after any completed 
-    expression is pushed into the top frame, loop: while the top frame is a quote 
-    frame with 2 elements, pop-and-reduce it into the frame below. That also replaces 
-    the token-splicing hack for atoms. Longer-term, a small recursive-descent reader 
-    is cleaner and gives you real unbalanced-paren errors — right now the 
-    end-of-input drain loop silently "fixes" unclosed parens, which will make parser 
-    bugs invisible.
-
-- Strings keep their quotes (""hello""): 
-    - str(token.slice(1, -1)).
 
 ### Cosmetic
 
