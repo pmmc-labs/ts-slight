@@ -1,0 +1,23 @@
+
+(defun ponger ()
+    (do
+        (let msg (recv))
+        (if (eq? (head msg) 'stop)
+            'pong-done
+            (do
+                (send (head (tail msg)) (list 'pong $$))
+                (ponger)))))
+
+(defun pinger (target n)
+    (if (== n 0)
+        (do
+            (send target (list 'stop $$))
+            'ping-done)
+        (do
+            (send target (list 'ping $$))
+            (let reply (recv))
+            (pprint (list 'round n 'reply reply))
+            (pinger target (- n 1)))))
+
+(let pong (fork (ponger)))
+(list (join (fork (pinger pong 3))) (join pong))

@@ -17,6 +17,12 @@ export * from './syscalls.ts';
 export * from './konts.ts';
 export * from './strand.ts';
 
+function loadPrelude () {
+    let path = './lib/Prelude.slight';
+    let source = readFileSync(path, 'utf8');
+    return source;
+}
+
 export async function main () {
     let path = process.argv[2];
     if (path == undefined) {
@@ -24,8 +30,11 @@ export async function main () {
         process.exit(1);
     }
 
-    let source = readFileSync(path, 'utf8');
-    let exprs  = parse(source);
+    let source  = [
+        loadPrelude(),
+        readFileSync(path, 'utf8')
+    ].join("\n;; -- \n");
+    let exprs   = parse(source);
 
     if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
@@ -51,9 +60,12 @@ export async function main () {
 }
 
 export async function prove (test_source : string) {
-    let test_module_path = './lib/Test.slight';
-    let test_module_source = readFileSync(test_module_path, 'utf8');
-    let source = [ test_module_source, test_source ].join("\n\n");
+    let source = [
+        loadPrelude(),
+        readFileSync('./lib/Test.slight', 'utf8'),
+        test_source
+    ].join("\n;; -- \n");
+
     let exprs  = parse(source);
     if (DEBUG) console.log("Test Parsed: ", exprs.map(pprint));
     let env = initalizeEnv();

@@ -1,0 +1,40 @@
+
+(defun notify-all (subs item)
+    (if (nil? subs) ()
+        (do
+            (send (head subs) (list 'item item))
+            (notify-all (tail subs) item))))
+
+(defun stop-all (subs)
+    (if (nil? subs) ()
+        (do
+            (send (head subs) (list 'done))
+            (stop-all (tail subs)))))
+
+(defun subscriber ()
+    (do
+        (let m (recv))
+        (if (eq? (head m) 'item)
+            (do
+                (pprint (list $$ 'received (head (tail m))))
+                (subscriber))
+            'sub-done)))
+
+(defun broker (subs)
+    (do
+        (let m (recv))
+        (if (eq? (head m) 'pub)
+            (do
+                (notify-all subs (head (tail m)))
+                (broker subs))
+            (do
+                (stop-all subs)
+                'broker-done))))
+
+(let s1 (fork (subscriber)))
+(let s2 (fork (subscriber)))
+(let b  (fork (broker (list s1 s2))))
+(send b (list 'pub 1))
+(send b (list 'pub 2))
+(send b (list 'stop))
+(list (join b) (join s1) (join s2))

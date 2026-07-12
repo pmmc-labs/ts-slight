@@ -38,4 +38,13 @@
             (fail $passed $failed msg)
             (pass $passed $failed msg))))
 
-
+(defun is (got expected msg)
+    (lambda ($passed $failed)
+        (let result (eq? got expected))
+        (let ok-res ((ok result msg) $passed $failed))
+        (or result
+            (do
+                (sys/io/print-ln "# Failed test " msg)
+                (sys/io/print-ln "#        got: " got)
+                (sys/io/print-ln "#   expected: " expected)))
+        ok-res))

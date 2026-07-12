@@ -1,7 +1,7 @@
 import { DEBUG } from './debug.ts';
 import {
     type TERM, type Env, type Pid, type ERROR,
-    isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse,
+    isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
     nil, car, cdr, cons, uncons, list, sym, lambda,
     newPid, newEnv, bind, lookup, bindParams, raise, pprint,
@@ -311,6 +311,11 @@ export class Strand {
                         if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
                         if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
                         return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
+                    case 'when' :
+                        let [ when_cond, when_if_true ] = uncons(tail);
+                        if (when_cond  == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
+                        if (when_if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
+                        return EvalExpr( when_cond, kont.env, Cond( when_if_true, nil, kont.env, kont.kont ) )
                     case 'and' :
                         let [ and_cond, and_if_true ] = uncons(tail);
                         if (and_cond == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
@@ -457,7 +462,7 @@ export class Strand {
             // (or cond if-false)
             if (kont.if_true === undefined) {
                 if (kont.if_false === undefined) return RaiseError(`Expected if-false in COND, got undefined`, kont);
-                if (isBool(returned) ? isFalse(returned) : isNil(returned)) {
+                if (isBool(returned) ? isFalse(returned) : isNum(returned) ? returned.value == 0 : isNil(returned)) {
                     return EvalExpr( kont.if_false, kont.env, kont.kont )
                 } else {
                     return Return( returned, kont.env, kont.kont );
@@ -466,7 +471,7 @@ export class Strand {
             // (and cond if-true)
             else if (kont.if_false === undefined) {
                 if (kont.if_true === undefined) return RaiseError(`Expected if-true in COND, got undefined`, kont);
-                if (isBool(returned) ? isTrue(returned) : !isNil(returned)) {
+                if (isBool(returned) ? isTrue(returned) : isNum(returned) ? returned.value != 0 : !isNil(returned)) {
                     return EvalExpr( kont.if_true, kont.env, kont.kont )
                 } else {
                     return Return( returned, kont.env, kont.kont );
