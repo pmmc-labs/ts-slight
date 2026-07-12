@@ -105,8 +105,44 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     env = bind( sym('/'), liftNumBinOp('/', (n, m) => n / m), env );
     env = bind( sym('%'), liftNumBinOp('%', (n, m) => n % m), env );
 
+    // numeric un-ops
+    // TODO: ... these
+    // (bind .abs   (n) "Num::abs")
+    // (bind .cos   (n) "Num::cos")
+    // (bind .sin   (n) "Num::sin")
+    // (bind .int   (n) "Num::int")
+    // (bind .sqrt  (n) "Num::sqrt")
+    // (bind .rand  (n) "Num::rand")
+    // (bind .chr   (n) "Num::chr")
+    // (bind .hex   (n) "Num::hex")
+    // (bind .max   (n m) "Num::max")
+    // (bind .min   (n m) "Num::min")
+    // (bind .ceil  (n m) "Num::ceil")
+    // (bind .floor (n m) "Num::floor"))
+
     // string bin-ops
     env = bind( sym('~'), liftStrBinOp('~', (n, m) => n + m), env );
+
+    // string other-ops
+    // TODO: ... these
+    // (bind .uc      (n)     "Str::uc")
+    // (bind .lc      (n)     "Str::lc")
+    // (bind .fc      (n)     "Str::fc")
+    // (bind .ucfirst (n)     "Str::ucfirst")
+    // (bind .lcfirst (n)     "Str::lcfirst")
+    // (bind .hex     (n)     "Str::hex")
+    // (bind .oct     (n)     "Str::oct")
+    // (bind .chomp   (n)     "Str::chomp")
+    // (bind .length  (n)     "Str::length")
+    // (bind .index   (n m)   "Str::index")
+    // (bind .rindex  (n m)   "Str::rindex")
+    // (define .split (n p)   (split p n))
+    // (bind .join    (n p)   "join")
+    // (bind .repeat  (n r)   "Str::repeat")
+    // (bind .substr  (n o l) "Str::substr")
+    // ;; TODO
+    // ;; - .upper?
+    // ;; - .lower?
 
     // literal comparison bin-ops
     env = bind( sym('=='), liftLiteralBoolOp('==', (n, m) => n == m), env );
@@ -126,6 +162,7 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     env = bind( sym('bool?'),  liftUnOp('bool?',  (t) => bool(isBool(t))), env );
     env = bind( sym('true?'),  liftUnOp('true?',  (t) => bool(isBool(t) && isTrue(t))), env );
     env = bind( sym('false?'), liftUnOp('false?', (t) => bool(isBool(t) && isFalse(t))), env );
+    // TODO: add other type predicates
 
     env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : isNil(t))), env );
 

@@ -1,0 +1,27 @@
+
+(defun test-actor (next)
+    (do
+        (let msg (recv))
+        (let count (cdar msg))
+        (if (nil? next)
+            (say "ALL DONE: " count)
+            (send next (list 'PING (+ count 1)))
+        )
+    )
+)
+
+(defun setup (n next)
+    (if (== n 0)
+        (do
+            (say "READY")
+            next)
+        (setup (- n 1) (fork (yield (test-actor next))))))
+
+(say "INIT")
+(let last (setup 100 (fork (yield (test-actor ())))))
+
+(let start (gettimeofday))
+(say "START")
+(send last (list 'PING 0))
+
+start
