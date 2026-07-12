@@ -1,7 +1,7 @@
 import { DEBUG } from './debug.ts';
 import {
     type TERM, type Env, type Pid, type ERROR,
-    isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue,
+    isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse,
     isLambda, isBuiltin, isCallable,
     nil, car, cdr, cons, uncons, list, sym, lambda,
     newPid, newEnv, bind, lookup, bindParams, raise, pprint,
@@ -307,10 +307,20 @@ export class Strand {
                     switch (head.ident) {
                     case 'if' :
                         let [ cond, if_true, if_false ] = uncons(tail);
-                        if (cond     == undefined) return RaiseError(`Expected conf for COND, got undefined`, kont);
+                        if (cond  == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
                         if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
                         if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
                         return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
+                    case 'and' :
+                        let [ and_cond, and_if_true ] = uncons(tail);
+                        if (and_cond == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
+                        if (and_if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
+                        return EvalExpr( and_cond, kont.env, Cond( and_if_true, undefined, kont.env, kont.kont ) )
+                    case 'or' :
+                        let [ or_cond, or_if_false ] = uncons(tail);
+                        if (or_cond     == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
+                        if (or_if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
+                        return EvalExpr( or_cond, kont.env, Cond( undefined, or_if_false, kont.env, kont.kont ) )
                     case 'do' :
                         let exprs = uncons(tail);
                         let next = EvalExpr( exprs.pop()!, kont.env, kont.kont );
@@ -443,12 +453,33 @@ export class Strand {
             let local = bind( kont.name, returned, kont.env );
             return Return( returned, kont.env, kont.kont );
         case 'COND':
-            if (returned == undefined) return RaiseError(`Expected Bool returned to COND, got undefined`, kont);
-            if (!isBool(returned))     return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
-            if (isTrue(returned)) {
-                return EvalExpr( kont.if_true, kont.env, kont.kont )
-            } else {
-                return EvalExpr( kont.if_false, kont.env, kont.kont )
+            if (returned == undefined) return RaiseError(`Expected value returned to COND, got undefined`, kont);
+            // (or cond if-false)
+            if (kont.if_true === undefined) {
+                if (kont.if_false === undefined) return RaiseError(`Expected if-false in COND, got undefined`, kont);
+                if (isBool(returned) ? isFalse(returned) : isNil(returned)) {
+                    return EvalExpr( kont.if_false, kont.env, kont.kont )
+                } else {
+                    return Return( returned, kont.env, kont.kont );
+                }
+            }
+            // (and cond if-true)
+            else if (kont.if_false === undefined) {
+                if (kont.if_true === undefined) return RaiseError(`Expected if-true in COND, got undefined`, kont);
+                if (isBool(returned) ? isTrue(returned) : !isNil(returned)) {
+                    return EvalExpr( kont.if_true, kont.env, kont.kont )
+                } else {
+                    return Return( returned, kont.env, kont.kont );
+                }
+            }
+            // (if cond if-true if-false)
+            else {
+                if (!isBool(returned)) return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
+                if (isTrue(returned)) {
+                    return EvalExpr( kont.if_true, kont.env, kont.kont )
+                } else {
+                    return EvalExpr( kont.if_false, kont.env, kont.kont )
+                }
             }
         case 'SCOPE_EXIT':
             if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);

@@ -1,7 +1,7 @@
 
 import {
     type TERM, type LIST, type Env, type Builtin, type Num, type Str, type Bool, type ERROR,
-    isNil, isCons, isNum, isStr, isList, isLiteral,
+    isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
     nil, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
@@ -123,6 +123,8 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     // type predicates
     env = bind( sym('nil?'),  liftUnOp('nil?',  (t) => bool(isNil(t))),   env );
     env = bind( sym('atom?'), liftUnOp('atom?', (t) => bool(!isList(t))), env );
+
+    env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : false)), env );
 
     // cons functions
     env = bind( sym('cons'), liftBinOp('cons',  (h, t) => { if (isList(t))    return cons(h, t); return raise(`Expected a list for second arg to cons, not ${t.type}`); }), env );

@@ -7,22 +7,24 @@ import {
 
 export type Kontinuation = { env : Env, kont : Kontinue }
 
+export type MaybeTERM = TERM | undefined
+
 export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
 export type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Kontinuation
 export type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
 export type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
 export type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
 export type Define    = { type : 'DEFINE',    name : Sym                      } & Kontinuation
-export type Cond      = { type : 'COND',      if_true : TERM, if_false : TERM } & Kontinuation
 
+export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
 export type Send      = { type : 'SEND'       } & Kontinuation
 export type Syscall   = { type : 'SYSCALL'    } & Kontinuation
 export type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 export type Drop      = { type : 'DROP'       } & Kontinuation
-export type Err       = { type : 'ERR',  error : ERROR } & Kontinuation
+export type Err       = { type : 'ERR',   error : ERROR } & Kontinuation
 export type Block     = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
-export type Yield     = { type : 'YIELD', result : TERM | undefined } & Kontinuation
-export type Halt      = { type : 'HALT',  result : TERM | undefined, env : Env }
+export type Yield     = { type : 'YIELD', result : MaybeTERM } & Kontinuation
+export type Halt      = { type : 'HALT',  result : MaybeTERM, env : Env }
 
 export type Kontinue =
     | EvalExpr
@@ -95,7 +97,7 @@ export function Define (name : Sym, env : Env, kont : Kontinue) : Define {
     return { type  : 'DEFINE', name, env, kont }
 }
 
-export function Cond (if_true : TERM, if_false : TERM, env : Env, kont : Kontinue) : Cond {
+export function Cond (if_true : MaybeTERM, if_false : MaybeTERM, env : Env, kont : Kontinue) : Cond {
     return { type : 'COND', if_true, if_false, env, kont }
 }
 
