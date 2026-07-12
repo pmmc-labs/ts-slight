@@ -143,15 +143,16 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
 
     // utilities ...
 
+    // NOTE: this is just a place to park this work now
+    // until the I/O system evolves
     env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
         console.log(uncons(args).map((arg) =>
-            isLiteral(arg) ? arg.value : pprint(arg)
+            isStr(arg) ? arg.value : pprint(arg)
         ).join(''));
         return nil;
     }), env );
 
     env = bind( sym('pprint'),   liftUnOp('pprint', (t) => { console.log(pprint(t)); return nil; }), env );
-
     env = bind( sym('time'),     liftUnOp('time',     (t) => { if (!isStr(t)) return raise(`time expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
     env = bind( sym('time/end'), liftUnOp('time/end', (t) => { if (!isStr(t)) return raise(`time/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
 

@@ -34,13 +34,18 @@ export async function main () {
     env = initalizeEnv( env );
 
     let strand = new Strand();
+    if (DEBUG) console.time('tests');
     let halted = await strand.run(exprs, env);
-
-    for (const proc of halted) {
-        if (proc.kont.type == 'HALT') {
-            console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-        } else if (proc.kont.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+    if (DEBUG) console.timeEnd('tests');
+    if (DEBUG) {
+        for (const proc of halted) {
+            console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
+            if (proc.kont.type == 'HALT') {
+                console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
+            } else if (proc.kont.type == 'ERR') {
+                console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+            }
+            console.groupEnd();
         }
     }
 }
@@ -53,12 +58,16 @@ export async function prove (test_source : string) {
     if (DEBUG) console.log("Test Parsed: ", exprs.map(pprint));
     let env = initalizeEnv();
     let strand = new Strand();
+    console.time('tests');
     let halted = await strand.run(exprs, env);
+    console.timeEnd('tests');
     for (const proc of halted) {
+        console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
         if (proc.kont.type == 'HALT') {
             console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
         } else if (proc.kont.type == 'ERR') {
             console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
         }
+        console.groupEnd();
     }
 }
