@@ -121,10 +121,13 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     env = bind( sym('ne?'),  liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
 
     // type predicates
-    env = bind( sym('nil?'),  liftUnOp('nil?',  (t) => bool(isNil(t))),   env );
-    env = bind( sym('atom?'), liftUnOp('atom?', (t) => bool(!isList(t))), env );
+    env = bind( sym('nil?'),   liftUnOp('nil?',   (t) => bool(isNil(t))),   env );
+    env = bind( sym('atom?'),  liftUnOp('atom?',  (t) => bool(!isList(t))), env );
+    env = bind( sym('bool?'),  liftUnOp('bool?',  (t) => bool(isBool(t))), env );
+    env = bind( sym('true?'),  liftUnOp('true?',  (t) => bool(isBool(t) && isTrue(t))), env );
+    env = bind( sym('false?'), liftUnOp('false?', (t) => bool(isBool(t) && isFalse(t))), env );
 
-    env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : false)), env );
+    env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : isNil(t))), env );
 
     // cons functions
     env = bind( sym('cons'), liftBinOp('cons',  (h, t) => { if (isList(t))    return cons(h, t); return raise(`Expected a list for second arg to cons, not ${t.type}`); }), env );
@@ -139,7 +142,16 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     env = bind( sym('tail'), liftUnOp('tail',   (list) => { if (isCons(list)) return cdr(list); return raise(`Expected a list for tail, not ${list.type}`); }),  env );
 
     // utilities ...
-    env = bind( sym('pprint'),   liftListOp('pprint', (args) => { uncons(args).forEach((arg) => console.log(pprint(arg))); return nil; }), env );
+
+    env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
+        console.log(uncons(args).map((arg) =>
+            isLiteral(arg) ? arg.value : pprint(arg)
+        ).join(''));
+        return nil;
+    }), env );
+
+    env = bind( sym('pprint'),   liftUnOp('pprint', (t) => { console.log(pprint(t)); return nil; }), env );
+
     env = bind( sym('time'),     liftUnOp('time',     (t) => { if (!isStr(t)) return raise(`time expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
     env = bind( sym('time/end'), liftUnOp('time/end', (t) => { if (!isStr(t)) return raise(`time/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
 

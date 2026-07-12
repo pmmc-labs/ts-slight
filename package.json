@@ -5,7 +5,9 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "rm -rf ./js && tsc",
-    "slight": "rm -rf ./js && tsc && node js/bin/slight.js"
+    "build"     : "rm -rf ./js && tsc",
+    "test"      : "rm -rf ./js && tsc && node js/tests/001-basic.js",
+    "self-test" : "rm -rf ./js && tsc && node js/tests/100-self-test.js",
+    "slight"    : "rm -rf ./js && tsc && node js/bin/slight.js"
   }
 }

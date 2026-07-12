@@ -1,0 +1,41 @@
+
+;; internal functions
+
+(defun pass ($passed $failed msg)
+    (sys/io/print-ln "ok " $passed " - " msg)
+    (list (+ $passed 1) $failed))
+
+(defun fail ($passed $failed msg)
+    (sys/io/print-ln "not ok " $passed " - " msg)
+    (list (+ $passed 1) (+ $failed 1)))
+
+(defun done-testing ($passed $failed)
+    (sys/io/print-ln "1.." $passed)
+    (if (== $failed 0) ()
+        (sys/io/print-ln "# looks like you failed " $failed " test(s) of " $passed)))
+
+(defun test-runner ($passed $failed tests)
+    (if (nil? tests)
+        (done-testing $passed $failed)
+        (do
+            (let result ((head tests) $passed $failed))
+            (test-runner (car result) (cadr result) (tail tests)))))
+
+;; exported functions
+
+(defun run-tests (tests)
+    (test-runner 0 0 tests))
+
+(defun diag (msg)
+    (lambda ($passed $failed)
+        (sys/io/print-ln "# " msg)
+        (list $passed $failed)))
+
+
+(defun ok (test msg)
+    (lambda ($passed $failed)
+        (if (or (and (bool? test) (false? test)) (nil? test))
+            (fail $passed $failed msg)
+            (pass $passed $failed msg))))
+
+
