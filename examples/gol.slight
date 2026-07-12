@@ -1,0 +1,42 @@
+
+(defun length (lst)
+    (if (nil? lst) 0
+        (+ 1 (length (tail lst)))))
+
+(defun range (b e)
+    (if (== b e)
+        (cons e ())
+        (cons b (range (+ b 1) e))))
+
+(defun map (f lst)
+    (if (nil? lst) ()
+        (cons (f (head lst)) (map f (tail lst)))))
+
+(defun grep (f lst)
+    (if (nil? lst) ()
+        (if (f (head lst))
+            (cons (head lst) (grep f (tail lst)))
+            (grep f (tail lst)))))
+
+(defun reduce (acc f lst)
+    (if (nil? lst) acc
+        (reduce (f (head lst) acc) f (tail lst))))
+
+(defun sum (lst)
+    (reduce 0 (lambda (n acc) (+ acc n)) lst))
+
+;; -----------------------------------------------------------------------------
+
+(defun make-grid (h w f)
+    (map (lambda (x) (map (lambda (y) (f x y)) (range 0 w) )) (range 0 h)))
+
+(defun display-grid (grid) (map pprint grid))
+
+(defun render-grid (grid f)
+    (map (lambda (row) (pprint (map f row))) grid))
+
+;; -----------------------------------------------------------------------------
+
+(let $grid (make-grid 9 9 (lambda (x y) (if (eq? x y) 'ALIVE 'DEAD))))
+
+(render-grid $grid (lambda (c)  (if (eq? c 'ALIVE) '@ '_)))
