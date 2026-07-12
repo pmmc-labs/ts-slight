@@ -5,9 +5,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "rm -rf ./js && tsc"
-  },
-  "dependencies": {
-    "sexpr-plus": "^7.0.0"
+    "build": "rm -rf ./js && tsc",
+    "slight": "rm -rf ./js && tsc && node js/bin/slight.js"
   }
 }
