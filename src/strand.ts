@@ -1,10 +1,10 @@
 import { DEBUG } from './debug.ts';
 import {
-    type TERM, type Env, type Pid, type ERROR,
+    type TERM, type Env, type MapEnv, type Pid, type ERROR,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
     nil, car, cdr, cons, uncons, list, sym, lambda,
-    newPid, newEnv, bind, lookup, bindParams, raise, pprint,
+    newPid, newMapEnv, newRibEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {
     type Kontinue, type Chan, type WaitFor, type Process,
@@ -143,7 +143,7 @@ export class Strand {
 
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
         let pid   = newPid(++this.PID_SEQ);
-        let local = newEnv( env );
+        let local = newRibEnv( env );
         if (ppid != undefined) bind( sym('$ppid'), ppid, local );
 
         let kont : Kontinue = Halt( local, nil );
@@ -207,8 +207,8 @@ export class Strand {
         });
     }
 
-    async run (exprs : TERM[], env : Env) : Promise<Process[]> {
-        env = newEnv( env ); // for the (defun)s
+    async run (exprs : TERM[], env : MapEnv) : Promise<Process[]> {
+        env = newMapEnv( env ); // for the (defun)s
 
         let to_run = [];
         for (const expr of exprs) {

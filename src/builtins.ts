@@ -1,9 +1,9 @@
 
 import {
-    type TERM, type LIST, type Env, type Builtin, type Num, type Str, type Bool, type ERROR,
+    type TERM, type LIST, type Env, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
     nil, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
-    newEnv, bind, eq, list, pprint, uncons
+    newMapEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
 
 // -----------------------------------------------------------------------------
@@ -95,8 +95,8 @@ export function liftLiteralBoolOp (name : string, f : (n : JSLiteral, m : JSLite
 
 // -----------------------------------------------------------------------------
 
-export function initalizeEnv (core : Env | undefined = undefined) : Env {
-    let env : Env = core == undefined ? newEnv() : newEnv( core );
+export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
+    let env : MapEnv = newMapEnv( core );
 
     // numeric bin-ops
     env = bind( sym('+'), liftNumBinOp('+', (n, m) => n + m), env );

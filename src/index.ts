@@ -4,7 +4,7 @@ import { parse }          from './parser.ts';
 import { initalizeEnv }   from './builtins.ts';
 import { Strand }         from './strand.ts';
 import {
-    newEnv, bind,
+    newMapEnv, bind,
     sym, list, str,
     pprint,
 } from './terms.ts';
@@ -38,7 +38,7 @@ export async function main () {
 
     if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
-    let env = newEnv();
+    let env = newMapEnv();
     env = bind( sym('@ARGV'), list( ...process.argv.slice(3).map((arg) => str(arg)) ), env );
     env = initalizeEnv( env );
 

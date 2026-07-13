@@ -13,7 +13,10 @@ export type Num      = { type : 'NUM',   value : number }
 export type Bool     = { type : 'BOOL',  value : boolean }
 export type ERROR    = { type : 'ERROR', error : any }
 
-export type Env      = { type : 'ENV', bindings : Map<string,TERM>, parent : Env | undefined }
+export type RibNode  = { name : string, value : TERM, next : RibNode | undefined }
+export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined }
+export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
+export type Env      = MapEnv | RibEnv
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
@@ -35,7 +38,7 @@ export function isError (t : TERM) : t is ERROR  { return t.type == 'ERROR' }
 
 export function isBuiltin (t : TERM) : t is Builtin { return t.type == 'BIF' }
 export function isLambda  (t : TERM) : t is Lambda  { return t.type == 'LAMBDA' }
-export function isEnv     (t : TERM) : t is Env  { return t.type == 'ENV' }
+export function isEnv     (t : TERM) : t is Env  { return t.type == 'MENV' || t.type == 'RENV' }
 
 export function isLiteral  (t : TERM) : t is LITERAL  { return isStr(t) || isNum(t) || isBool(t) }
 export function isList     (t : TERM) : t is LIST     { return isNil(t) || isCons(t) }
@@ -84,37 +87,55 @@ export function list (...args : TERM[]) : LIST {
 
 export function newPid (ident : number) : Pid { return { type : 'PID', ident } }
 
-export function newEnv (parent : Env | undefined = undefined) : Env {
-    return { type : 'ENV', bindings : new Map<string,TERM>(), parent }
+export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
+    return { type : 'MENV', bindings : new Map<string,TERM>(), parent }
 }
 
-export function bind (name : Sym, value : TERM, env : Env) : Env {
-    env.bindings.set( name.ident, value );
+export function newRibEnv (parent : Env) : RibEnv {
+    return { type : 'RENV', head : undefined, parent }
+}
+
+// NOTE: mutates env in place -- MENV overwrites the Map entry, RENV
+// prepends a node (a re-bind shadows; lookup finds the newest first)
+export function bind<E extends Env> (name : Sym, value : TERM, env : E) : E {
+    if (env.type == 'MENV') {
+        env.bindings.set( name.ident, value );
+    } else {
+        env.head = { name : name.ident, value, next : env.head };
+    }
     return env;
 }
 
 export function lookup (name : Sym, env : Env) : TERM {
-    while (env != undefined) {
-        //console.log(`looking for ${pprint(name)} in `, env);
-        if (env.bindings.has(name.ident)) return env.bindings.get(name.ident)!;
-        if (env.parent == undefined) break;
-        env = env.parent;
+    let ident = name.ident;
+    let e : Env | undefined = env;
+    while (e != undefined) {
+        if (e.type == 'RENV') {
+            let node = e.head;
+            while (node != undefined) {
+                if (node.name == ident) return node.value;
+                node = node.next;
+            }
+        } else {
+            let found = e.bindings.get(ident);
+            if (found !== undefined) return found;
+        }
+        e = e.parent;
     }
     return raise(`Unable to find ${name.ident} in Env`);
 }
 
-export function bindParams (params : LIST, args : LIST, env : Env) : Env | ERROR {
-    let local = newEnv(env);
+export function bindParams (params : LIST, args : LIST, env : Env) : RibEnv | ERROR {
+    let head : RibNode | undefined = undefined;
     while (!isNil(params)) {
         if (isNil(args))          return raise(`ARITY MISMATCH! missing ${pprint(params)} parameter`);
         if (!isSym(params.first)) return raise(`Expected parameter to be a symbol, wtf!`);
-        local = bind( params.first, args.first, local );
+        head   = { name : params.first.ident, value : args.first, next : head };
         params = params.rest;
         args   = args.rest;
     }
     if (!isNil(args)) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
-    //console.log(local);
-    return local;
+    return { type : 'RENV', head, parent : env };
 }
 
 // ...
@@ -161,7 +182,12 @@ export function pprint (t : TERM) : string {
     case isCons(t)    : return `(${uncons(t).map(pprint).join(' ')})`
     case isLambda(t)  : return `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`
     case isBuiltin(t) : return `#<${t.name}>`
-    case isEnv(t)     : return `{ ${t.bindings.toString()} ${t.parent ? pprint(t.parent) : '~'} }`
+    case isEnv(t)     : {
+        if (t.type == 'MENV') return `{MENV[${t.bindings.size}] ${t.parent ? pprint(t.parent) : '~'}}`;
+        let names = [];
+        for (let n = t.head; n != undefined; n = n.next) names.push(n.name);
+        return `{RENV(${names.join(' ')}) ${pprint(t.parent)}}`;
+    }
     case isError(t)   : return `E!${String(t.error)}`
     default : throw new Error(`WTF IS ${String(t)}`);
     }
