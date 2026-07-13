@@ -1,0 +1,56 @@
+
+(defun test-actor (reply-to next)
+    ;(sys/io/print-ln "ACTOR READY! " $$ " with next " next)
+    (let msg (recv))
+    (let count (cadr msg))
+    (if (nil? next)
+        (if (eq? (car msg) 'EXIT)
+            (sys/io/print-ln "EXITING: at " $$)
+            (do
+                ;(time-it/end "start")
+                ;;(sys/io/print-ln "ALL DONE: " count " at " $$)
+                (send reply-to (list 'COMPLETED count $$))
+                (yield (test-actor reply-to next))
+            )
+        )
+        (if (eq? (car msg) 'EXIT)
+            (send next (list 'EXIT 0))
+            (do
+                (send next (list 'PING (+ count 1)))
+                (yield (test-actor reply-to next))
+            )
+        )
+    )
+)
+
+(defun setup (n reply-to next)
+    (if (== n 0)
+        (do
+            (sys/io/print-ln "READY")
+            next)
+        (setup (- n 1) reply-to (fork (test-actor reply-to next)))))
+
+(defun send-ping (pid count)
+    (if (>= count 0)
+        (do
+            ;(time-it "start")
+            (send pid (list 'PING 0))
+            (recv)
+            (send-ping pid (- count 1)))
+        (do
+            (send pid (list 'EXIT 0))
+            (time-it/end "pings"))))
+
+(let self $$)
+(let actor-count 1000)
+(let ping-count  1000)
+
+(sys/io/print-ln "INIT with " actor-count " actors, sending " ping-count " messages")
+(time-it "setup")
+(let last (setup actor-count self (fork (test-actor self ()))))
+(time-it/end "setup")
+
+(sys/io/print-ln "START")
+
+(time-it "pings")
+(send-ping last ping-count)
