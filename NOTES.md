@@ -71,6 +71,11 @@ EvalArgs.done — worth a NOTE comment so future-you doesn't reuse a kont.
 
 ### Env sharing. Since you've confirmed the leak is "parent binds after fork, child sees it," the options:
 
+RESOLVED 2026-07-13: rib envs + snapshotEnv at fork (structural sharing,
+O(1)) — see docs/superpowers/specs/2026-07-13-env-refactor-design.md.
+Remaining known hole: a lambda created pre-fork and invoked in the child
+reads the parent's live frame (fixing that needs persistent envs).
+
 - (a) Snapshot at fork 
     — copy each frame's Map down the chain. True isolation, but O(all bindings) 
     per fork and it copies the global/defun frame pointlessly.

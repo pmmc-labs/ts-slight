@@ -95,6 +95,15 @@ export function newRibEnv (parent : Env) : RibEnv {
     return { type : 'RENV', head : undefined, parent }
 }
 
+// O(1) fork-time snapshot: shares the node chain, pins the head.
+// The parent keeps prepending to its own live head; the snapshot
+// never sees those. MENV layers are only written before processes
+// run, so they are safe to share as-is.
+export function snapshotEnv (env : Env) : Env {
+    if (env.type == 'MENV') return env;
+    return { type : 'RENV', head : env.head, parent : env.parent };
+}
+
 // NOTE: mutates env in place -- MENV overwrites the Map entry, RENV
 // prepends a node (a re-bind shadows; lookup finds the newest first)
 export function bind<E extends Env> (name : Sym, value : TERM, env : E) : E {

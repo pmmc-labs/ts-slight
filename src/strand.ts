@@ -4,7 +4,7 @@ import {
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
     nil, car, cdr, cons, uncons, list, sym, lambda,
-    newPid, newMapEnv, newRibEnv, bind, lookup, bindParams, raise, pprint,
+    newPid, newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {
     type Kontinue, type Chan, type WaitFor, type Process,
@@ -143,7 +143,7 @@ export class Strand {
 
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
         let pid   = newPid(++this.PID_SEQ);
-        let local = newRibEnv( env );
+        let local = newRibEnv( snapshotEnv(env) );
         if (ppid != undefined) bind( sym('$ppid'), ppid, local );
 
         let kont : Kontinue = Halt( local, nil );

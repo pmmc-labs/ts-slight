@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import {
     sym, num, list,
-    newMapEnv, newRibEnv, bind, lookup, bindParams,
+    newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams,
     isError, isEnv,
 } from '../src/index.ts';
 
@@ -44,5 +44,16 @@ if (!isError(callf)) {
 // arity mismatches still return ERROR
 assert.ok( isError( bindParams( params, list(num(1)), defuns ) ),                 'missing arg' );
 assert.ok( isError( bindParams( params, list(num(1), num(2), num(3)), defuns ) ), 'extra arg' );
+
+// snapshot: pinned head, parent keeps moving
+let live = newRibEnv(root);
+bind( sym('s'), num(1), live );
+let snap = snapshotEnv(live);
+bind( sym('s'), num(2), live );
+assert.deepEqual( lookup(sym('s'), live), num(2), 'live env sees the re-bind' );
+assert.deepEqual( lookup(sym('s'), snap), num(1), 'snapshot is pinned at fork time' );
+
+// snapshot of a map layer is the layer itself
+assert.equal( snapshotEnv(root), root, 'MENV snapshot is identity' );
 
 console.log('ok - env unit tests passed');
