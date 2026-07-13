@@ -179,6 +179,7 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
     env = bind( sym('tail'), liftUnOp('tail',   (list) => { if (isCons(list)) return cdr(list); return raise(`Expected a list for tail, not ${list.type}`); }),  env );
 
     // utilities ...
+    env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return nil; }), env );
 
     // NOTE: this is just a place to park this work now
     // until the I/O system evolves
@@ -189,9 +190,8 @@ export function initalizeEnv (core : Env | undefined = undefined) : Env {
         return nil;
     }), env );
 
-    env = bind( sym('pprint'),   liftUnOp('pprint', (t) => { console.log(pprint(t)); return nil; }), env );
-    env = bind( sym('time'),     liftUnOp('time',     (t) => { if (!isStr(t)) return raise(`time expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
-    env = bind( sym('time/end'), liftUnOp('time/end', (t) => { if (!isStr(t)) return raise(`time/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
+    env = bind( sym('time-it'),     liftUnOp('time-it',     (t) => { if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
+    env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => { if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
 
     return env;
 }

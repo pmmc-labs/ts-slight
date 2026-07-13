@@ -41,10 +41,10 @@
 (defun product (lst)
     (reduce 1 (lambda (n acc) (* acc n)) lst))
 
-(define max (lst)
+(defun max (lst)
     (reduce 0 (lambda (n acc) (max acc n)) lst))
 
-(define min (lst)
+(defun min (lst)
     (reduce 0 (lambda (n acc) (min acc n)) lst))
 
 ;; -----------------------------------------------------------------------------

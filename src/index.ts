@@ -43,19 +43,17 @@ export async function main () {
     env = initalizeEnv( env );
 
     let strand = new Strand();
-    if (DEBUG) console.time('tests');
+    console.time('slight-run');
     let halted = await strand.run(exprs, env);
-    if (DEBUG) console.timeEnd('tests');
-    if (DEBUG) {
-        for (const proc of halted) {
-            console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
-            if (proc.kont.type == 'HALT') {
-                console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-            } else if (proc.kont.type == 'ERR') {
-                console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
-            }
-            console.groupEnd();
+    console.timeEnd('slight-run');
+    for (const proc of halted) {
+        if (DEBUG) console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
+        if (proc.kont.type == 'HALT') {
+            if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
+        } else if (proc.kont.type == 'ERR') {
+            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
         }
+        if (DEBUG) console.groupEnd();
     }
 }
 
