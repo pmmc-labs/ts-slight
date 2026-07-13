@@ -29,6 +29,11 @@
             (cons (head lst) (grep f (tail lst)))
             (grep f (tail lst)))))
 
+(defun find (f lst)
+    (when (not (nil? lst))
+        (if (f (head lst)) (head lst)
+            (find f (tail lst)))))
+
 (defun reduce (acc f lst)
     (if (nil? lst) acc
         (reduce (f (head lst) acc) f (tail lst))))

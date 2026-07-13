@@ -1,0 +1,40 @@
+
+(defun db-server (data)
+    (let msg (recv))
+    (let reply-to (car msg))
+    (let cmd      (cadr msg))
+    (let args     (cddr msg))
+    (if (eq? cmd 'update)
+        (yield (db-server (cons args data)))
+    (if (eq? cmd 'delete)
+        (yield (db-server (grep (lambda (r) (ne? (car args) (car r))) data)))
+    (if (eq? cmd 'lookup) (do
+        (let found (find (lambda (r) (eq? (car args) (car r))) data))
+        (if (nil? found)
+            (send reply-to (list 'not-found))
+            (send reply-to (list 'found (cdr found))))
+        (yield (db-server data))
+    ) ()))))
+
+(let pid (fork (db-server ())))
+
+(send pid (list $$ 'update 'x 10))
+(send pid (list $$ 'update 'y 20))
+(send pid (list $$ 'update 'z 30))
+
+(send pid (list $$ 'lookup 'x))
+(pprint (recv))
+
+(send pid (list $$ 'lookup 'z))
+(pprint (recv))
+
+(send pid (list $$ 'lookup 'y))
+(pprint (recv))
+
+(send pid (list $$ 'delete 'z))
+(send pid (list $$ 'lookup 'z))
+(pprint (recv))
+(send pid (list $$ 'lookup 'x))
+(pprint (recv))
+
+(send pid (list $$ 'exit ()))
