@@ -9,6 +9,14 @@ prove(`
     (let iso-pid (fork iso-x))
     (let iso-x 2)
 
+    ;; fork inside a lambda: the snapshot must pin the WHOLE rib chain,
+    ;; not just the innermost frame -- the deeper process frame is written
+    ;; again by (let lky 2) after the lambda returns
+    (let lky 1)
+    (let leaky-forker (lambda () (fork (do (yield 0) (yield 0) lky))))
+    (let lky-pid (leaky-forker))
+    (let lky 2)
+
     ;; deep lookup: locals, enclosing frames, and builtins
     (defun make-add3 (a) (lambda (b) (lambda (c) (+ a (+ b c)))))
 
@@ -21,6 +29,8 @@ prove(`
 
     (is (join iso-pid) 1 "... child sees the fork-time binding, not the later one")
     (is iso-x 2          "... parent sees its own rebinding")
+
+    (is (join lky-pid) 1 "... fork inside a lambda pins the whole chain")
 
     (is (((make-add3 1) 2) 3) 6 "... nested lambda frames resolve through the chain")
 

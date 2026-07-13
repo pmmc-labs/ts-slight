@@ -31,3 +31,15 @@
 (time-it "start")
 (send last (list 'PING 0))
 
+;; -----------------------------------------------------------------------------
+;; Timings, env refactor 2026-07-13 (compiled js, 1M actors)
+;; -----------------------------------------------------------------------------
+;;
+;; before : setup 3.673s | start 3.949s | slight-run 7.626s
+;; after  : setup 3.469s | start 3.722s | slight-run 7.196s
+;;
+;; 5M actors on the default (~4GB) heap: still OOMs after the refactor
+;; (footprint is smaller, but not enough) -- needs --max-old-space-size=8192.
+;;
+;; -----------------------------------------------------------------------------
+

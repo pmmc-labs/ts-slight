@@ -95,13 +95,16 @@ export function newRibEnv (parent : Env) : RibEnv {
     return { type : 'RENV', head : undefined, parent }
 }
 
-// O(1) fork-time snapshot: shares the node chain, pins the head.
-// The parent keeps prepending to its own live head; the snapshot
+// Fork-time snapshot: pins the head of EVERY rib frame down to the
+// MENV boundary (deeper frames become innermost again when control
+// returns to them, so one level is not enough -- see the
+// fork-inside-a-lambda test). O(rib depth), typically 1-2 frames.
+// The parent keeps prepending to its own live heads; the snapshot
 // never sees those. MENV layers are only written before processes
 // run, so they are safe to share as-is.
 export function snapshotEnv (env : Env) : Env {
     if (env.type == 'MENV') return env;
-    return { type : 'RENV', head : env.head, parent : env.parent };
+    return { type : 'RENV', head : env.head, parent : snapshotEnv(env.parent) };
 }
 
 // NOTE: mutates env in place -- MENV overwrites the Map entry, RENV
@@ -127,6 +130,7 @@ export function lookup (name : Sym, env : Env) : TERM {
             }
         } else {
             let found = e.bindings.get(ident);
+            // no TERM is ever undefined, so get doubles as has
             if (found !== undefined) return found;
         }
         e = e.parent;

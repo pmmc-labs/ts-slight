@@ -54,10 +54,14 @@ Invariants encoded by the types:
 - `bindParams(params, args, env)`: builds a single rib frame directly
   from params/args -- nodes only, no Map. This is the hot path (one per
   lambda application).
-- `snapshotEnv(env)` (new): RENV -> fresh
-  `{ type:'RENV', head: env.head, parent: env.parent }`, sharing all
+- `snapshotEnv(env)` (new): walks the rib chain, pinning the head of
+  EVERY RENV frame down to the MENV boundary -- `{ type:'RENV', head:
+  env.head, parent: snapshotEnv(env.parent) }` recursively, sharing all
   nodes; MENV -> returned as-is (Map layers are only written during
-  builtins init and the defun scan, before any process runs). O(1).
+  builtins init and the defun scan, before any process runs). O(rib
+  depth), typically 1-2 frames -- a one-level snapshot is insufficient
+  because a deeper frame becomes innermost again when control returns
+  to it (e.g. fork inside a lambda) and is written by later `let`s.
 
 ### Call sites
 
@@ -86,11 +90,14 @@ Changed at fork: the child snapshots the parent's frame at fork time, so
 parent `let`s after `fork` are no longer visible to the child. This is
 the intended fix for the NOTES.md env-sharing leak.
 
-**Known limitation (documented, not fixed):** closures capture Env
-objects. A lambda created before `fork` and invoked in the child reads
-through the parent's *live* frame and can still observe post-fork
-bindings. Fixing this requires fully persistent envs, which is out of
-scope.
+**Known limitation (documented, not fixed):** the fork-time snapshot
+now pins every rib frame down to the MENV boundary, so a leaked write
+to any ancestor frame reached by the process's own chain is closed.
+The one remaining hole is closure capture: a lambda created *before*
+fork and invoked in the *child* still holds the Env object it closed
+over directly (not via the process's pinned chain), which is the
+parent's *live* frame -- it can still observe post-fork bindings.
+Fixing this requires fully persistent envs, which is out of scope.
 
 `defun` mutual recursion is unaffected (defuns live in the mutable MENV
 layer, populated before execution).

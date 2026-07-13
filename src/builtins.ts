@@ -1,6 +1,6 @@
 
 import {
-    type TERM, type LIST, type Env, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
+    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
     nil, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
