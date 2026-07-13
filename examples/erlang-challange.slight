@@ -8,7 +8,7 @@
             (time-it/end "start")
             (sys/io/print-ln "ALL DONE: " count " at " $$))
         (do
-            ;;(sys/io/print-ln "!! Sending Ping to " next " from " $$ " with count " count)
+            ;(sys/io/print-ln "!! Sending Ping to " next " from " $$ " with count " count)
             (send next (list 'PING (+ count 1))))
     )
 )
@@ -18,9 +18,9 @@
         (do
             (sys/io/print-ln "READY")
             next)
-        (setup (- n 1) (fork (yield (test-actor next))))))
+        (setup (- n 1) (fork (test-actor next)))))
 
-(let actor-count 5000000)
+(let actor-count 100000)
 
 (sys/io/print-ln "INIT with " actor-count " actors")
 (time-it "setup")
@@ -31,76 +31,3 @@
 (time-it "start")
 (send last (list 'PING 0))
 
-
-;; -----------------------------------------------------------------------------
-;; Timings from a recent test run ...
-;; -----------------------------------------------------------------------------
-;;
-;; INIT with 1000 actors
-;; READY
-;; setup: 35.152ms
-;; START
-;; start: 33.402ms
-;; ALL DONE: 1000 at PID[2]
-;; slight-run: 72.833ms
-;;
-;; INIT with 10000 actors
-;; READY
-;; setup: 306.094ms
-;; START
-;; start: 306.866ms
-;; ALL DONE: 10000 at PID[2]
-;; slight-run: 617.455ms
-;;
-;; INIT with 50000 actors
-;; READY
-;; setup: 1.479s
-;; START
-;; start: 1.481s
-;; ALL DONE: 50000 at PID[2]
-;; slight-run: 2.965s
-;;
-;; INIT with 100000 actors
-;; READY
-;; setup: 2.946s
-;; START
-;; start: 2.953s
-;; ALL DONE: 100000 at PID[2]
-;; slight-run: 5.903s
-;;
-;; INIT with 250000 actors
-;; READY
-;; setup: 7.366s
-;; START
-;; start: 7.476s
-;; ALL DONE: 250000 at PID[2]
-;; slight-run: 14.847s
-;;
-;; INIT with 500000 actors
-;; READY
-;; setup: 14.969s
-;; START
-;; start: 15.261s
-;; ALL DONE: 500000 at PID[2]
-;; slight-run: 30.235s
-;;
-;; INIT with 1000000 actors
-;; READY
-;; setup: 29.866s
-;; START
-;; start: 30.171s
-;; ALL DONE: 1000000 at PID[2]
-;; slight-run: 1:00.044 (m:ss.mmm)
-;;
-;; INIT with 2000000 actors
-;; READY
-;; setup: 1:01.926 (m:ss.mmm)
-;; START
-;; start: 1:01.536 (m:ss.mmm)
-;; ALL DONE: 2000000 at PID[2]
-;; slight-run: 2:03.472 (m:ss.mmm)
-;;
-;; INIT with 5000000 actors
-;; BOOM! ran outta memory!
-;;
-;; -----------------------------------------------------------------------------

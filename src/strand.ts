@@ -234,13 +234,17 @@ export class Strand {
 
         let init_pid = this.spawnProcess( to_run, env, undefined ); // no parent
 
+        let hop_every = 25;
         while (true) {
             if (this.running.length > 0) {
                 let proc = this.running.pop()!;
                 if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
                 this.step(proc, this.DEFAULT_QUOTA);
                 this.park(proc);
-                await this.hop();
+                if (this.inflight > 0 && --hop_every <= 0) {
+                    await this.hop();
+                    hop_every = 25;
+                }
             } else if (this.inflight > 0) {
                 await this.sleepUntilWoken();
             } else if (this.blocked.size > 0) {
@@ -353,7 +357,7 @@ export class Strand {
                     case 'yield':
                         return EvalExpr( car(tail), kont.env, Yield( kont.env, kont.kont ) );
                     case 'fork':
-                        return Return( this.spawnProcess( uncons(tail), kont.env, proc.pid ), kont.env, Yield( kont.env, kont.kont ) );
+                        return Return( this.spawnProcess( uncons(tail), kont.env, proc.pid ), kont.env, kont.kont );
                     case 'join':
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     case 'send':
