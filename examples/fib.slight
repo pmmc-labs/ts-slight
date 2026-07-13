@@ -10,5 +10,5 @@
 ;; Timings (fib 27, compiled js, this machine)
 ;; -----------------------------------------------------------------------------
 ;; before env refactor : 970.682ms
-;; after  env refactor : <fill in from Task 4>
+;; after  env refactor : 920.814ms
 ;; -----------------------------------------------------------------------------
