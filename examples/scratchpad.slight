@@ -1,0 +1,10 @@
+
+
+(let status 403)
+
+(pprint (cond
+    ((eq? status 200) (pprint "...") 'OK)
+    ((eq? status 400) (pprint "...") 'BAD_REQUEST)
+    ((eq? status 404) (pprint "...") 'NOT_FOUND)
+    ((eq? status 500) (pprint "...") 'SERVER_ERROR)
+    (#true 'UNKNOWN_STATUS)))

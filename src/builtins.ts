@@ -1,7 +1,7 @@
 
 import {
     type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
-    isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
+    isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
     nil, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
@@ -157,11 +157,14 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('ne?'),  liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
 
     // type predicates
-    env = bind( sym('nil?'),   liftUnOp('nil?',   (t) => bool(isNil(t))),   env );
-    env = bind( sym('atom?'),  liftUnOp('atom?',  (t) => bool(!isList(t))), env );
-    env = bind( sym('bool?'),  liftUnOp('bool?',  (t) => bool(isBool(t))), env );
-    env = bind( sym('true?'),  liftUnOp('true?',  (t) => bool(isBool(t) && isTrue(t))), env );
-    env = bind( sym('false?'), liftUnOp('false?', (t) => bool(isBool(t) && isFalse(t))), env );
+    env = bind( sym('nil?'),      liftUnOp('nil?',      (t) => bool(isNil(t))),   env );
+    env = bind( sym('atom?'),     liftUnOp('atom?',     (t) => bool(!isList(t))), env );
+    env = bind( sym('list?'),     liftUnOp('list?',     (t) => bool(isList(t))),  env );
+    env = bind( sym('bool?'),     liftUnOp('bool?',     (t) => bool(isBool(t))),  env );
+    env = bind( sym('true?'),     liftUnOp('true?',     (t) => bool(isBool(t) && isTrue(t))),  env );
+    env = bind( sym('false?'),    liftUnOp('false?',    (t) => bool(isBool(t) && isFalse(t))), env );
+    env = bind( sym('literal?'),  liftUnOp('literal?',  (t) => bool(isLiteral(t))),  env );
+    env = bind( sym('callable?'), liftUnOp('callable?', (t) => bool(isCallable(t))), env );
     // TODO: add other type predicates
 
     env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : isNil(t))), env );

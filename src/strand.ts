@@ -1,6 +1,6 @@
 import { DEBUG } from './debug.ts';
 import {
-    type TERM, type Env, type MapEnv, type Pid, type ERROR,
+    type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
     nil, car, cdr, cons, uncons, list, sym, lambda,
@@ -309,26 +309,85 @@ export class Strand {
 
                 if (isSym(head) && isCons(tail)) {
                     switch (head.ident) {
+                    case 'case' :
+                        let topic = tail.first;
+                        let kases = uncons(tail.rest);
+                        // grab the first one to be sure we
+                        // actually have conditions to check
+                        let first_kase = kases.shift();
+                        if (first_kase == undefined) return RaiseError(`Expected at least one kase for CASE, got undefined`, kont);
+                        if (!isCons(first_kase)) return RaiseError('Expected kases to be cons in (cond)', kont);
+                        let [ first_kase_cond, first_kase_if_true, ...first_kase_if_true_rest ] = uncons(first_kase);
+                        if (first_kase_cond    == undefined) return RaiseError(`Expected kase/cond for CASE, got undefined`, kont);
+                        if (first_kase_if_true == undefined) return RaiseError(`Expected kase/if-true for CASE, got undefined`, kont);
+                        // expand the case match ...
+                        first_kase_cond = list( sym('eq?'), topic, first_kase_cond );
+                        if (first_kase_if_true_rest.length > 0) {
+                            first_kase_if_true = list( sym('do'), first_kase_if_true, ...first_kase_if_true_rest)
+                        }
+                        // ... now build the rest into an if/else chain
+                        let otherwise_kases : LIST = nil;
+                        while (kases.length > 0) {
+                            let kase = kases.pop();
+                            if (kase == undefined) return RaiseError(`Expected kase for CASE, got undefined`, kont);
+                            if (!isCons(kase)) return RaiseError('Expected kases to be cons in (cond)', kont);
+                            let [ cond, if_true, ...if_true_rest ] = uncons(kase);
+                            if (cond    == undefined) return RaiseError(`Expected kase/cond for CASE, got undefined`, kont);
+                            if (if_true == undefined) return RaiseError(`Expected kase/if-true for CASE, got undefined`, kont);
+                            if (!isBool(cond)) cond = list( sym('eq?'), topic, cond );
+                            if (if_true_rest.length > 0) if_true = list( sym('do'), if_true, ...if_true_rest);
+                            otherwise_kases = list( sym('if'), cond, if_true, otherwise_kases );
+                        }
+                        //console.log(pprint(first_kase_cond));
+                        //console.log(pprint(otherwise_kases));
+                        return EvalExpr( first_kase_cond, kont.env, Cond( first_kase_if_true, otherwise_kases, kont.env, kont.kont ) );
+                    case 'cond' :
+                        let clauses = uncons(tail);
+                        // grab the first one to be sure we
+                        // actually have conditions to check
+                        let first_clause = clauses.shift();
+                        if (first_clause == undefined) return RaiseError(`Expected at least one clause for COND, got undefined`, kont);
+                        if (!isCons(first_clause)) return RaiseError('Expected clauses to be cons in (cond)', kont);
+                        let [ first_clause_cond, first_clause_if_true, ...first_clause_if_true_rest ] = uncons(first_clause);
+                        if (first_clause_cond    == undefined) return RaiseError(`Expected clause/cond for COND, got undefined`, kont);
+                        if (first_clause_if_true == undefined) return RaiseError(`Expected clause/if-true for COND, got undefined`, kont);
+                        if (first_clause_if_true_rest.length > 0) {
+                            first_clause_if_true = list( sym('do'), first_clause_if_true, ...first_clause_if_true_rest)
+                        }
+                        // ... now build the rest into an if/else chain
+                        let otherwise_clauses : LIST = nil;
+                        while (clauses.length > 0) {
+                            let clause = clauses.pop();
+                            if (clause == undefined) return RaiseError(`Expected clause for COND, got undefined`, kont);
+                            if (!isCons(clause)) return RaiseError('Expected clauses to be cons in (cond)', kont);
+                            let [ cond, if_true, ...if_true_rest ] = uncons(clause);
+                            if (cond    == undefined) return RaiseError(`Expected clause/cond for COND, got undefined`, kont);
+                            if (if_true == undefined) return RaiseError(`Expected clause/if-true for COND, got undefined`, kont);
+                            if (if_true_rest.length > 0) if_true = list( sym('do'), if_true, ...if_true_rest);
+                            otherwise_clauses = list( sym('if'), cond, if_true, otherwise_clauses );
+                        }
+                        return EvalExpr( first_clause_cond, kont.env, Cond( first_clause_if_true, otherwise_clauses, kont.env, kont.kont ) );
                     case 'if' :
                         let [ cond, if_true, if_false ] = uncons(tail);
-                        if (cond  == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
-                        if (if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
-                        if (if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
+                        if (cond  == undefined) return RaiseError(`Expected cond for IF, got undefined`, kont);
+                        if (if_true  == undefined) return RaiseError(`Expected if-true for IF, got undefined`, kont);
+                        if (if_false == undefined) return RaiseError(`Expected if-false for IF, got undefined`, kont);
                         return EvalExpr( cond, kont.env, Cond( if_true, if_false, kont.env, kont.kont ) )
                     case 'when' :
-                        let [ when_cond, when_if_true ] = uncons(tail);
-                        if (when_cond  == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
-                        if (when_if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
+                        let [ when_cond, when_if_true, ...when_if_true_rest ] = uncons(tail);
+                        if (when_cond  == undefined) return RaiseError(`Expected cond for WHEN, got undefined`, kont);
+                        if (when_if_true  == undefined) return RaiseError(`Expected if-true for WHEN, got undefined`, kont);
+                        if (when_if_true_rest.length > 0) when_if_true = list( sym('do'), when_if_true, ...when_if_true_rest);
                         return EvalExpr( when_cond, kont.env, Cond( when_if_true, nil, kont.env, kont.kont ) )
                     case 'and' :
                         let [ and_cond, and_if_true ] = uncons(tail);
-                        if (and_cond == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
-                        if (and_if_true  == undefined) return RaiseError(`Expected if-true for COND, got undefined`, kont);
+                        if (and_cond == undefined) return RaiseError(`Expected cond for AND, got undefined`, kont);
+                        if (and_if_true  == undefined) return RaiseError(`Expected if-true for AND, got undefined`, kont);
                         return EvalExpr( and_cond, kont.env, Cond( and_if_true, undefined, kont.env, kont.kont ) )
                     case 'or' :
                         let [ or_cond, or_if_false ] = uncons(tail);
-                        if (or_cond     == undefined) return RaiseError(`Expected cond for COND, got undefined`, kont);
-                        if (or_if_false == undefined) return RaiseError(`Expected if-false for COND, got undefined`, kont);
+                        if (or_cond     == undefined) return RaiseError(`Expected cond for OR, got undefined`, kont);
+                        if (or_if_false == undefined) return RaiseError(`Expected if-false for OR, got undefined`, kont);
                         return EvalExpr( or_cond, kont.env, Cond( undefined, or_if_false, kont.env, kont.kont ) )
                     case 'do' :
                         let exprs = uncons(tail);
@@ -371,6 +430,8 @@ export class Strand {
                 if (isSym(head) && isNil(tail)) {
                     switch (head.ident) {
                     case 'if'      :
+                    case 'case'    :
+                    case 'cond'    :
                     case 'do'      :
                     case 'lambda'  :
                     case 'let'     :
