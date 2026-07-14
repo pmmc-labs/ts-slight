@@ -24,7 +24,6 @@
 (defun send-ping (pid count)
     (if (>= count 0)
         (do
-            ;(time-it "start")
             (send pid (list 'PING 0))
             (recv)
             (send-ping pid (- count 1)))
