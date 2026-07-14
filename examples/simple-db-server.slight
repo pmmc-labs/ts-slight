@@ -1,5 +1,4 @@
 
-
 (defun db-server (data)
     (let msg (recv))
     (let reply-to (car msg))
@@ -8,8 +7,10 @@
     (sys/io/print-ln "... " cmd " -> " args)
     (case cmd
         ('update
+            (send reply-to (list 'ok ()))
             (yield (db-server (cons args data))))
         ('delete
+            (send reply-to (list 'ok ()))
             (yield (db-server (grep (lambda (r) (ne? (car args) (car r))) data))))
         ('lookup
             (let found (find (lambda (r) (eq? (car args) (car r))) data))
@@ -18,34 +19,34 @@
                 (send reply-to (list 'found (cadr found))))
             (yield (db-server data)))
         ('exit
+            (send reply-to (list 'shutdown ()))
             (sys/io/print-ln "... shutting down server"))
         (#true
             (sys/io/print-ln "... logging unknown command " cmd)
             (send reply-to (list 'unknown-command cmd))
             (yield (db-server data)))))
 
+(defun db-client (reply-to db-pid)
+    (lambda (cmd key args)
+        (send db-pid (list reply-to cmd key args))
+        (recv)))
+
 (let pid (fork (db-server ())))
 
-(send pid (list $$ 'update 'x 10))
-(send pid (list $$ 'update 'y 20))
-(send pid (list $$ 'update 'z 30))
+(let dbh (db-client $$ pid))
 
-(send pid (list $$ 'lookup 'x))
-(pprint (recv))
+(pprint (dbh 'update 'x 10))
+(pprint (dbh 'update 'y 20))
+(pprint (dbh 'update 'z 30))
 
-(send pid (list $$ 'lookup 'z))
-(pprint (recv))
+(pprint (dbh 'lookup 'x ()))
+(pprint (dbh 'lookup 'z ()))
 
-(send pid (list $$ 'lookup 'y))
-(pprint (recv))
+(pprint (dbh 'lookup 'y ()))
 
-(send pid (list $$ 'delete 'z))
-(send pid (list $$ 'lookup 'z))
-(pprint (recv))
-(send pid (list $$ 'lookup 'x))
-(pprint (recv))
+(pprint (dbh 'delete 'z ()))
+(pprint (dbh 'lookup 'z ()))
+(pprint (dbh 'lookup 'x ()))
 
-(send pid (list $$ 'wassup ()))
-(pprint (recv))
-
-(send pid (list $$ 'exit ()))
+(pprint (dbh 'wassup () ()))
+(pprint (dbh 'exit   () ()))

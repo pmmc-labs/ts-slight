@@ -5,9 +5,7 @@
         (do
             (time-it/end "start")
             (sys/io/print-ln "ALL DONE: " (cadr msg) " at " $$))
-        (send next (list 'PING (+ (cadr msg) 1)))
-    )
-)
+        (send next (list 'PING (+ (cadr msg) 1)))))
 
 (defun setup (n next)
     (if (== n 0)

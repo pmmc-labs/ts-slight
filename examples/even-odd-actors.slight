@@ -1,37 +1,31 @@
 
 (defun is-it-even? (reply-to)
-    (do
-        (pprint 'running-is-it-even?)
-        (let msg (recv))
-        (pprint (list 'is-it-even? 'got msg))
-        (let tag (head msg))
-        (if (eq? tag 'IS-EVEN?) (do
-            (let n        (head (tail msg)))
-            (let ask-odd? (head (tail (tail msg))))
-            (if (== n 0)
-                (send reply-to (list 'IT-IS-EVEN!))
-                (do
-                    (send ask-odd? (list 'IS-ODD? (- n 1) $$))))
-                    (yield (is-it-even? reply-to)))
-            ()
-        )))
+    (pprint 'running-is-it-even?)
+    (let msg (recv))
+    (pprint (list 'is-it-even? 'got msg))
+    (let tag (head msg))
+    (when (eq? tag 'IS-EVEN?)
+        (let n        (head (tail msg)))
+        (let ask-odd? (head (tail (tail msg))))
+        (if (== n 0)
+            (send reply-to (list 'IT-IS-EVEN!))
+            (do
+                (send ask-odd? (list 'IS-ODD? (- n 1) $$))))
+                (yield (is-it-even? reply-to))))
 
 (defun is-it-odd? (reply-to)
-    (do
-        (pprint 'running-is-it-odd?)
-        (let msg (recv))
-        (pprint (list 'is-it-odd? 'got msg))
-        (let tag (head msg))
-        (if (eq? tag 'IS-ODD?) (do
-            (let n        (head (tail msg)))
-            (let ask-even? (head (tail (tail msg))))
-            (if (== n 0)
-                (send reply-to (list 'IT-IS-ODD!))
-                (do
-                    (send ask-even? (list 'IS-EVEN? (- n 1) $$))))
-                    (yield (is-it-odd? reply-to)))
-            ()
-        )))
+    (pprint 'running-is-it-odd?)
+    (let msg (recv))
+    (pprint (list 'is-it-odd? 'got msg))
+    (let tag (head msg))
+    (when (eq? tag 'IS-ODD?)
+        (let n        (head (tail msg)))
+        (let ask-even? (head (tail (tail msg))))
+        (if (== n 0)
+            (send reply-to (list 'IT-IS-ODD!))
+            (do
+                (send ask-even? (list 'IS-EVEN? (- n 1) $$))))
+                (yield (is-it-odd? reply-to))))
 
 (let $reply-to $$)
 

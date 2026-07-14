@@ -12,24 +12,22 @@
             (stop-all (tail subs)))))
 
 (defun subscriber ()
-    (do
-        (let m (recv))
-        (if (eq? (head m) 'item)
-            (do
-                (pprint (list $$ 'received (cadr m)))
-                (subscriber))
-            'sub-done)))
+    (let m (recv))
+    (if (eq? (head m) 'item)
+        (do
+            (pprint (list $$ 'received (cadr m)))
+            (subscriber))
+        'sub-done))
 
 (defun broker (subs)
-    (do
-        (let m (recv))
-        (if (eq? (head m) 'pub)
-            (do
-                (notify-all subs (cadr m))
-                (broker subs))
-            (do
-                (stop-all subs)
-                'broker-done))))
+    (let m (recv))
+    (if (eq? (head m) 'pub)
+        (do
+            (notify-all subs (cadr m))
+            (broker subs))
+        (do
+            (stop-all subs)
+            'broker-done)))
 
 (let s1 (fork (subscriber)))
 (let s2 (fork (subscriber)))
