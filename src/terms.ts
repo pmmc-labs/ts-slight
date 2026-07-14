@@ -19,20 +19,25 @@ export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : En
 export type Env      = MapEnv | RibEnv
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
+// -----------------------------------------------------------------------------
+
+export const NIL   : Nil  = { type : 'NIL' }
+export const TRUE  : Bool = { type : 'BOOL', value : true }
+export const FALSE : Bool = { type : 'BOOL', value : false }
 
 // -----------------------------------------------------------------------------
 
-export function isNil  (t : TERM) : t is Nil  { return t.type === 'NIL'  }
-export function isCons (t : TERM) : t is Cons { return t.type === 'CONS' }
+export function isTrue  (t : Bool) : boolean { return t === TRUE }
+export function isFalse (t : Bool) : boolean { return t === FALSE }
 
+export function isNil   (t : TERM) : t is Nil  { return t === NIL  }
+
+export function isCons (t : TERM) : t is Cons { return t.type === 'CONS' }
 export function isSym  (t : TERM) : t is Sym  { return t.type === 'SYM'  }
 export function isPid  (t : TERM) : t is Pid  { return t.type === 'PID'  }
 export function isStr  (t : TERM) : t is Str  { return t.type === 'STR'  }
 export function isNum  (t : TERM) : t is Num  { return t.type === 'NUM'  }
 export function isBool (t : TERM) : t is Bool { return t.type === 'BOOL' }
-
-export function isTrue  (t : Bool) : boolean { return t.value === true }
-export function isFalse (t : Bool) : boolean { return t.value === false }
 
 export function isError (t : TERM) : t is ERROR  { return t.type == 'ERROR' }
 
@@ -46,46 +51,62 @@ export function isCallable (t : TERM) : t is CALLABLE { return isBuiltin(t) || i
 
 // -----------------------------------------------------------------------------
 
-export const nil : Nil = { type : 'NIL' }
-
-export function cons (first : TERM, rest : LIST) : Cons { return { type : 'CONS', first, rest } }
-
-export function car (list : Cons) : TERM { return list.first }
-export function cdr (list : Cons) : LIST { return list.rest  }
-
-export function cadr (list : Cons) : TERM {
-    if (isNil(list.rest)) return raise(`Cannot call cadr on a list with a nil tail`);
-    return list.rest.first;
+export function newPid (ident : number) : Pid {
+    return { type : 'PID', ident }
 }
 
-export function cddr (list : Cons) : LIST | ERROR {
-    if (isNil(list.rest)) return raise(`Cannot call cddr on a list with a nil tail`);
-    return list.rest.rest;
+export function bool (value : boolean) : Bool {
+    return value ? TRUE : FALSE
 }
 
-export function num  (value : number)  : Num  { return { type : 'NUM',  value } }
-export function str  (value : string)  : Str  { return { type : 'STR',  value } }
-export function bool (value : boolean) : Bool { return { type : 'BOOL', value } }
+export function cons (first : TERM, rest : LIST) : Cons {
+    return { type : 'CONS', first, rest }
+}
 
-export function sym (ident : string) : Sym { return { type : 'SYM', ident } }
+export function num (value : number) : Num  {
+    return { type : 'NUM',  value }
+}
+
+export function str (value : string) : Str  {
+    return { type : 'STR',  value }
+}
+
+export function sym (ident : string) : Sym {
+    return { type : 'SYM', ident };
+}
 
 export function lambda (params : LIST, body : TERM, env : Env) : Lambda {
     return { type : 'LAMBDA', params, body, env }
 }
 
-export function raise (error : any) : ERROR { return { type : 'ERROR', error } }
+export function raise (error : any) : ERROR {
+    return { type : 'ERROR', error }
+}
 
-// ...
+// list stuff ...
 
 export function list (...args : TERM[]) : LIST {
-    let xs : LIST = nil;
+    let xs : LIST = NIL;
     for (const arg of args.reverse()) {
         xs = cons(arg, xs)
     }
     return xs;
 }
 
-export function newPid (ident : number) : Pid { return { type : 'PID', ident } }
+export function car (list : Cons) : TERM { return list.first }
+export function cdr (list : Cons) : LIST { return list.rest  }
+
+export function cadr (list : Cons) : TERM {
+    if (isNil(list.rest)) return raise(`Cannot call cadr on a list with a NIL tail`);
+    return list.rest.first;
+}
+
+export function cddr (list : Cons) : LIST | ERROR {
+    if (isNil(list.rest)) return raise(`Cannot call cddr on a list with a NIL tail`);
+    return list.rest.rest;
+}
+
+// env stuff ...
 
 export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
     return { type : 'MENV', bindings : new Map<string,TERM>(), parent }
@@ -147,7 +168,7 @@ export function bindParams (params : LIST, args : LIST, env : Env) : RibEnv | ER
         params = params.rest;
         args   = args.rest;
     }
-    if (!isNil(args)) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
+    if (args !== NIL) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
     return { type : 'RENV', head, parent : env };
 }
 
@@ -155,7 +176,7 @@ export function bindParams (params : LIST, args : LIST, env : Env) : RibEnv | ER
 
 export function uncons (list : LIST) : TERM[] {
     let terms = [];
-    while (list.type != 'NIL') {
+    while (!isNil(list)) {
         terms.push(list.first);
         list = list.rest;
     }
@@ -165,7 +186,6 @@ export function uncons (list : LIST) : TERM[] {
 export function eq (lhs : TERM, rhs : TERM) : boolean {
     switch (true) {
     case isNil(lhs)     && isNil(rhs)     : return true;
-    case isError(lhs)   && isError(rhs)   : return lhs.error === rhs.error;
     case isLiteral(lhs) && isLiteral(rhs) : return lhs.value == rhs.value;
     case isSym(lhs)     && isSym(rhs)     : return lhs.ident == rhs.ident;
     case isPid(lhs)     && isPid(rhs)     : return lhs.ident == rhs.ident;
@@ -180,7 +200,9 @@ export function eq (lhs : TERM, rhs : TERM) : boolean {
     }
     case isLambda(lhs)  && isLambda(rhs)  : return eq(lhs.params, rhs.params) && eq(lhs.body, rhs.body) && lhs.env === rhs.env;
     case isBuiltin(lhs) && isBuiltin(rhs) : return eq(lhs.params, rhs.params) && lhs.body === rhs.body && lhs.name == rhs.name;
-    default : return false;
+    case isError(lhs)   && isError(rhs)   : return lhs.error === rhs.error;
+    default :
+        return false;
     }
 }
 
@@ -205,3 +227,5 @@ export function pprint (t : TERM) : string {
     default : throw new Error(`WTF IS ${String(t)}`);
     }
 }
+
+

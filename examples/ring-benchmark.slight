@@ -42,7 +42,7 @@
             (time-it/end "pings"))))
 
 (let self $$)
-(let actor-count 100000)
+(let actor-count 10000)
 (let ping-count  100)
 
 (sys/io/print-ln "INIT with " actor-count " actors, sending " ping-count " messages")

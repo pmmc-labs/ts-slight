@@ -2,7 +2,7 @@
 import {
     type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
-    nil, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
+    TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
 
@@ -86,7 +86,7 @@ type JSLiteral = number | string | boolean
 export function liftLiteralBoolOp (name : string, f : (n : JSLiteral, m : JSLiteral) => boolean) : Builtin {
     return liftBinOp(name, (n : TERM, m : TERM) : Bool | ERROR => {
         if (isLiteral(n) && isLiteral(m)) {
-            return bool(f( n.value, m.value ));
+            return f( n.value, m.value ) ? TRUE : FALSE;
         } else {
             return raise(`TYPE-ERROR! - expected Literals (Str, Num or Bool) got (${n.type} ${m.type})`);
         }
@@ -153,21 +153,21 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('>'),  liftLiteralBoolOp('>',  (n, m) => n >  m), env );
 
     // structural equality
-    env = bind( sym('eq?'),  liftBinOp('eq?', (n, m) => bool(eq(n, m))),  env );
-    env = bind( sym('ne?'),  liftBinOp('ne?', (n, m) => bool(!eq(n, m))), env );
+    env = bind( sym('eq?'),  liftBinOp('eq?', (n, m) => eq(n, m) ? TRUE : FALSE), env );
+    env = bind( sym('ne?'),  liftBinOp('ne?', (n, m) => eq(n, m) ? FALSE : TRUE), env );
 
     // type predicates
-    env = bind( sym('nil?'),      liftUnOp('nil?',      (t) => bool(isNil(t))),   env );
-    env = bind( sym('atom?'),     liftUnOp('atom?',     (t) => bool(!isList(t))), env );
-    env = bind( sym('list?'),     liftUnOp('list?',     (t) => bool(isList(t))),  env );
-    env = bind( sym('bool?'),     liftUnOp('bool?',     (t) => bool(isBool(t))),  env );
-    env = bind( sym('true?'),     liftUnOp('true?',     (t) => bool(isBool(t) && isTrue(t))),  env );
-    env = bind( sym('false?'),    liftUnOp('false?',    (t) => bool(isBool(t) && isFalse(t))), env );
-    env = bind( sym('literal?'),  liftUnOp('literal?',  (t) => bool(isLiteral(t))),  env );
-    env = bind( sym('callable?'), liftUnOp('callable?', (t) => bool(isCallable(t))), env );
-    // TODO: add other type predicates
+    env = bind( sym('nil?'),      liftUnOp('nil?',      (t) => isNil(t)      ? TRUE : FALSE), env );
+    env = bind( sym('atom?'),     liftUnOp('atom?',     (t) => !isList(t)    ? TRUE : FALSE), env );
+    env = bind( sym('list?'),     liftUnOp('list?',     (t) => isList(t)     ? TRUE : FALSE), env );
+    env = bind( sym('bool?'),     liftUnOp('bool?',     (t) => isBool(t)     ? TRUE : FALSE), env );
+    env = bind( sym('literal?'),  liftUnOp('literal?',  (t) => isLiteral(t)  ? TRUE : FALSE), env );
+    env = bind( sym('callable?'), liftUnOp('callable?', (t) => isCallable(t) ? TRUE : FALSE), env );
 
-    env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? !isTrue(t) : isNil(t))), env );
+    env = bind( sym('true?'),     liftUnOp('true?',     (t) => isBool(t) && t === TRUE  ? TRUE : FALSE), env );
+    env = bind( sym('false?'),    liftUnOp('false?',    (t) => isBool(t) && t === FALSE ? TRUE : FALSE), env );
+
+    env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? t !== TRUE : t === NIL)), env );
 
     // cons functions
     env = bind( sym('cons'), liftBinOp('cons',  (h, t) => { if (isList(t))    return cons(h, t); return raise(`Expected a list for second arg to cons, not ${t.type}`); }), env );
@@ -182,7 +182,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('tail'), liftUnOp('tail',   (list) => { if (isCons(list)) return cdr(list); return raise(`Expected a list for tail, not ${list.type}`); }),  env );
 
     // utilities ...
-    env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return nil; }), env );
+    env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
 
     // NOTE: this is just a place to park this work now
     // until the I/O system evolves
@@ -190,11 +190,11 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
         console.log(uncons(args).map((arg) =>
             isStr(arg) ? arg.value : pprint(arg)
         ).join(''));
-        return nil;
+        return NIL;
     }), env );
 
-    env = bind( sym('time-it'),     liftUnOp('time-it',     (t) => { if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);     console.time(t.value);    return nil; }), env );
-    env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => { if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return nil; }), env );
+    env = bind( sym('time-it'),     liftUnOp('time-it',     (t) => { if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);     console.time(t.value);    return NIL; }), env );
+    env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => { if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return NIL; }), env );
 
     return env;
 }

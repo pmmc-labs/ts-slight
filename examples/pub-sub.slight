@@ -16,7 +16,7 @@
         (let m (recv))
         (if (eq? (head m) 'item)
             (do
-                (pprint (list $$ 'received (head (tail m))))
+                (pprint (list $$ 'received (cadr m)))
                 (subscriber))
             'sub-done)))
 
@@ -25,7 +25,7 @@
         (let m (recv))
         (if (eq? (head m) 'pub)
             (do
-                (notify-all subs (head (tail m)))
+                (notify-all subs (cadr m))
                 (broker subs))
             (do
                 (stop-all subs)

@@ -3,7 +3,7 @@ import {
     type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
-    nil, car, cdr, cons, uncons, list, sym, lambda,
+    NIL, car, cdr, cons, uncons, list, sym, lambda,
     newPid, newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {
@@ -146,7 +146,7 @@ export class Strand {
         let local = newRibEnv( snapshotEnv(env) );
         if (ppid != undefined) bind( sym('$ppid'), ppid, local );
 
-        let kont : Kontinue = Halt( local, nil );
+        let kont : Kontinue = Halt( local, NIL );
         if (exprs.length > 0) {
             kont = EvalExpr( exprs.pop()!, local, kont );
             while (exprs.length > 0) {
@@ -326,7 +326,7 @@ export class Strand {
                             first_kase_if_true = list( sym('do'), first_kase_if_true, ...first_kase_if_true_rest)
                         }
                         // ... now build the rest into an if/else chain
-                        let otherwise_kases : LIST = nil;
+                        let otherwise_kases : LIST = NIL;
                         while (kases.length > 0) {
                             let kase = kases.pop();
                             if (kase == undefined) return RaiseError(`Expected kase for CASE, got undefined`, kont);
@@ -355,7 +355,7 @@ export class Strand {
                             first_clause_if_true = list( sym('do'), first_clause_if_true, ...first_clause_if_true_rest)
                         }
                         // ... now build the rest into an if/else chain
-                        let otherwise_clauses : LIST = nil;
+                        let otherwise_clauses : LIST = NIL;
                         while (clauses.length > 0) {
                             let clause = clauses.pop();
                             if (clause == undefined) return RaiseError(`Expected clause for COND, got undefined`, kont);
@@ -378,7 +378,7 @@ export class Strand {
                         if (when_cond  == undefined) return RaiseError(`Expected cond for WHEN, got undefined`, kont);
                         if (when_if_true  == undefined) return RaiseError(`Expected if-true for WHEN, got undefined`, kont);
                         if (when_if_true_rest.length > 0) when_if_true = list( sym('do'), when_if_true, ...when_if_true_rest);
-                        return EvalExpr( when_cond, kont.env, Cond( when_if_true, nil, kont.env, kont.kont ) )
+                        return EvalExpr( when_cond, kont.env, Cond( when_if_true, NIL, kont.env, kont.kont ) )
                     case 'and' :
                         let [ and_cond, and_if_true ] = uncons(tail);
                         if (and_cond == undefined) return RaiseError(`Expected cond for AND, got undefined`, kont);
