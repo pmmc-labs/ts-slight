@@ -5,7 +5,7 @@ import { initalizeEnv }   from './builtins.ts';
 import { Strand }         from './strand.ts';
 import {
     newMapEnv, bind,
-    sym, list, str,
+    sym, list, str, num,
     pprint,
 } from './terms.ts';
 
@@ -39,7 +39,7 @@ export async function main () {
     if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
     let env = newMapEnv();
-    env = bind( sym('@ARGV'), list( ...process.argv.slice(3).map((arg) => str(arg)) ), env );
+    env = bind( sym('@ARGV'), list( ...process.argv.slice(3).map((arg) => !isNaN(Number(arg)) ? num(parseInt(arg)) : str(arg)) ), env );
     env = initalizeEnv( env );
 
     let strand = new Strand();

@@ -1,11 +1,83 @@
 
 
-(defun height (h) (concat "height=" h ))
-(defun width  (w) (concat  "width=" w ))
+(defun Player (max-delay counter)
+    (let msg (recv))
+    (let tag      (car msg))
+    (let reply-to (cadr msg))
+    ;(let delay    (rand max-delay))
+    ;(sys/io/print-ln "... " tag " -> " reply-to " in " $$ " at " counter " with " delay)
+    ;(sleep max-delay)
+    (case tag
+        (:Serve
+            (send reply-to (list :Ping $$)) (yield (Player max-delay counter)))
+        (:Ping
+            (send reply-to (list :Pong $$)) (yield (Player max-delay (+ counter 1))))
+        (:Pong
+            (send reply-to (list :Ping $$)) (yield (Player max-delay (+ counter 1))))
+        (:EXIT
+            (send reply-to (list :Final counter)))))
 
-(defun textarea (h w contents)
-    (concat "<textarea " h " " w ">" contents "</textarea>"))
+
+(defun PingPong (duration)
+    (let p1 (fork (Player 0 0)))
+    (let p2 (fork (Player 0 0)))
+    ;(sys/io/print-ln "... starting game between " p1 " and " p2 " for " duration "ms")
+    (yield (send p1 (list :Serve p2)))
+    (sleep duration)
+    (send p1 (list :EXIT $$))
+    (let p1-score (recv))
+    (send p2 (list :EXIT $$))
+    (let p2-score (recv))
+    (list (list p1 p1-score) (list p2 p2-score)))
 
 
-(textarea :height 20 :width 100 "hello world")
+(defun start-tournament (n game duration)
+    (when (> n 0)
+        (cons (fork (game duration)) (start-tournament (- n 1) game duration))))
+
+(defun await-results (pids)
+    (map (lambda (pid) (join pid)) pids))
+
+(defun diverged? (lhs rhs tolerance)
+    ;(pprint (list (abs (- (cadr lhs) (cadr rhs))) tolerance))
+    (<= (abs (- (cadr lhs) (cadr rhs))) tolerance))
+
+(defun check-results (results)
+    (reduce (car results) (lambda (acc r)
+        (let acc-p1 (car  acc))
+        (let acc-p2 (cadr acc))
+        (let r-p1   (car  r))
+        (let r-p2   (cadr r))
+        (if (and (diverged? (cadr acc-p1) (cadr r-p1) 1)
+                 (diverged? (cadr acc-p2) (cadr r-p2) 1))
+            r
+            (do (sys/io/print-ln "... results diverged from " acc " to " r) acc))
+    ) (cdr results)))
+
+(defun calculate-totals (results)
+    (reduce 0 (lambda (acc r) (+ acc (cadr (cadr (car r))))) results))
+
+(let num-games (car @ARGV))
+(let game-duration (cadr @ARGV))
+
+(sys/io/print-ln "Running " num-games " for " game-duration)
+
+(pprint :Starting-Tournament)
+(time-it "start-ping-pongs")
+(let pids (start-tournament num-games PingPong game-duration))
+(time-it/end "start-ping-pongs")
+
+(pprint :Starting-Games)
+(time-it "play-ping-pongs")
+(let results (await-results pids))
+(time-it/end "play-ping-pongs")
+
+(pprint :Checking-Results)
+;(map pprint results)
+(pprint (check-results results))
+(pprint :Calculating-Totals)
+(pprint (calculate-totals results))
+
+
+
 

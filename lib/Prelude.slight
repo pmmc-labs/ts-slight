@@ -27,7 +27,7 @@
 
 (defun reduce (acc f lst)
     (if (nil? lst) acc
-        (reduce (f (head lst) acc) f (tail lst))))
+        (reduce (f acc (head lst)) f (tail lst))))
 
 ;; for lists of numbers ...
 
@@ -37,16 +37,16 @@
         (cons start (range (+ start step) end step))))
 
 (defun sum (lst)
-    (reduce 0 (lambda (n acc) (+ acc n)) lst))
+    (reduce 0 (lambda (acc n) (+ acc n)) lst))
 
 (defun product (lst)
-    (reduce 1 (lambda (n acc) (* acc n)) lst))
+    (reduce 1 (lambda (acc n) (* acc n)) lst))
 
 (defun max (lst)
-    (reduce 0 (lambda (n acc) (max acc n)) lst))
+    (reduce 0 (lambda (acc n) (max acc n)) lst))
 
 (defun min (lst)
-    (reduce 0 (lambda (n acc) (min acc n)) lst))
+    (reduce 0 (lambda (acc n) (min acc n)) lst))
 
 ;; -----------------------------------------------------------------------------
 ;; System functions

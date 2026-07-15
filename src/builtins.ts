@@ -127,6 +127,9 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
             isStr(arg) ? arg.value : pprint(arg)
         ).join('') )), env );
 
+    env = bind( sym('rand'), liftUnOp('rand', (n) => num(Math.floor(Math.random() * (n as Num).value))), env );
+    env = bind( sym('abs'), liftUnOp('abs', (n) => num(Math.abs((n as Num).value))), env );
+
     // string other-ops
     // TODO: ... these
     // (bind .uc      (n)     "Str::uc")
