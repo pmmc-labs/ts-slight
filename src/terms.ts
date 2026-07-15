@@ -1,3 +1,4 @@
+
 export type LITERAL  = Bool | Str | Num
 export type LIST     = Cons | Nil
 export type CALLABLE = Lambda | Builtin
@@ -19,8 +20,6 @@ export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : En
 export type Env      = MapEnv | RibEnv
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
-
-
 
 // -----------------------------------------------------------------------------
 
@@ -66,16 +65,29 @@ export function cons (first : TERM, rest : LIST) : Cons {
     return { type : 'CONS', first, rest }
 }
 
+const NUM_INTERN_TABLE = new Map<number,Num>();
 export function num (value : number) : Num  {
-    return { type : 'NUM',  value }
+    if (value < -1024 || value > 1024) return { type : 'NUM',  value };
+    let number = NUM_INTERN_TABLE.get(value);
+    if (number === undefined) {
+        number = { type : 'NUM', value };
+        NUM_INTERN_TABLE.set(value, number);
+    }
+    return number;
 }
 
 export function str (value : string) : Str  {
     return { type : 'STR',  value }
 }
 
+const SYM_INTERN_TABLE = new Map<string,Sym>();
 export function sym (ident : string) : Sym {
-    return { type : 'SYM', ident };
+    let symbol = SYM_INTERN_TABLE.get(ident);
+    if (symbol === undefined) {
+        symbol = { type : 'SYM', ident };
+        SYM_INTERN_TABLE.set(ident, symbol);
+    }
+    return symbol;
 }
 
 export function lambda (params : LIST, body : TERM, env : Env) : Lambda {
@@ -187,6 +199,7 @@ export function uncons (list : LIST) : TERM[] {
 }
 
 export function eq (lhs : TERM, rhs : TERM) : boolean {
+    if (lhs === rhs) return true;
     switch (true) {
     case isNil(lhs)     && isNil(rhs)     : return true;
     case isLiteral(lhs) && isLiteral(rhs) : return lhs.value == rhs.value;
