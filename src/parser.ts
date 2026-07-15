@@ -66,7 +66,14 @@ export function parse (source : string) : TERM[] {
             } else if (/^-?\d+(\.\d+)?$/.test(token)) {
                 emit(num(Number(token)));
             } else {
-                emit(sym(token));
+                if (token.startsWith(':')) {
+                    let qframe : any = [ sym('quote') ];
+                    qframe.quoted = true;
+                    stack.push(qframe);
+                    emit(sym(token.slice(1)));
+                } else {
+                    emit(sym(token));
+                }
             }
         }
     }

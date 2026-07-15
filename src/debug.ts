@@ -1,1 +1,1 @@
-export const DEBUG : boolean = process.env["DEBUG"] && process.env["DEBUG"] == '1' ? true : false;
+export const DEBUG : boolean = (globalThis as any).process?.env?.["DEBUG"] == '1';

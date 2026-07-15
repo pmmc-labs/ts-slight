@@ -6,24 +6,24 @@
     (let args     (cddr msg))
     (sys/io/print-ln "... " cmd " -> " args)
     (case cmd
-        ('update
-            (send reply-to (list 'ok ()))
+        (:update
+            (send reply-to (list :ok ()))
             (yield (db-server (cons args data))))
-        ('delete
-            (send reply-to (list 'ok ()))
+        (:delete
+            (send reply-to (list :ok ()))
             (yield (db-server (grep (lambda (r) (ne? (car args) (car r))) data))))
-        ('lookup
+        (:lookup
             (let found (find (lambda (r) (eq? (car args) (car r))) data))
             (if (nil? found)
-                (send reply-to (list 'not-found))
-                (send reply-to (list 'found (cadr found))))
+                (send reply-to (list :not-found))
+                (send reply-to (list :found (cadr found))))
             (yield (db-server data)))
-        ('exit
-            (send reply-to (list 'shutdown ()))
+        (:exit
+            (send reply-to (list :shutdown ()))
             (sys/io/print-ln "... shutting down server"))
         (#true
             (sys/io/print-ln "... logging unknown command " cmd)
-            (send reply-to (list 'unknown-command cmd))
+            (send reply-to (list :unknown-command cmd))
             (yield (db-server data)))))
 
 (defun db-client (reply-to db-pid)
@@ -35,18 +35,18 @@
 
 (let dbh (db-client $$ pid))
 
-(pprint (dbh 'update 'x 10))
-(pprint (dbh 'update 'y 20))
-(pprint (dbh 'update 'z 30))
+(pprint (dbh :update :x 10))
+(pprint (dbh :update :y 20))
+(pprint (dbh :update :z 30))
 
-(pprint (dbh 'lookup 'x ()))
-(pprint (dbh 'lookup 'z ()))
+(pprint (dbh :lookup :x ()))
+(pprint (dbh :lookup :z ()))
 
-(pprint (dbh 'lookup 'y ()))
+(pprint (dbh :lookup :y ()))
 
-(pprint (dbh 'delete 'z ()))
-(pprint (dbh 'lookup 'z ()))
-(pprint (dbh 'lookup 'x ()))
+(pprint (dbh :delete :z ()))
+(pprint (dbh :lookup :z ()))
+(pprint (dbh :lookup :x ()))
 
-(pprint (dbh 'wassup () ()))
-(pprint (dbh 'exit   () ()))
+(pprint (dbh :wassup () ()))
+(pprint (dbh :exit   () ()))

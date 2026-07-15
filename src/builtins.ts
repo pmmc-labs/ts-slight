@@ -1,6 +1,6 @@
 
 import {
-    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Bool, type ERROR,
+    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
     TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
@@ -122,6 +122,10 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     // string bin-ops
     env = bind( sym('~'), liftStrBinOp('~', (n, m) => n + m), env );
+    env = bind( sym('concat'), liftListOp('concat', (args) =>
+        str( uncons(args).map((arg) =>
+            isStr(arg) ? arg.value : pprint(arg)
+        ).join('') )), env );
 
     // string other-ops
     // TODO: ... these

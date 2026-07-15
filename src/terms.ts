@@ -19,6 +19,9 @@ export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : En
 export type Env      = MapEnv | RibEnv
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
+
+
+
 // -----------------------------------------------------------------------------
 
 export const NIL   : Nil  = { type : 'NIL' }

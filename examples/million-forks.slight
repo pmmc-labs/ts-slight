@@ -1,11 +1,13 @@
 
+;; https://pkolaczk.github.io/memory-consumption-of-async/
+
 (defun test-actor (next)
     (let msg (recv))
     (if (nil? next)
         (do
             (time-it/end "start")
             (sys/io/print-ln "ALL DONE: " (cadr msg) " at " $$))
-        (send next (list 'PING (+ (cadr msg) 1)))))
+        (send next (list :PING (+ (cadr msg) 1)))))
 
 (defun setup (n next)
     (if (== n 0)
@@ -23,6 +25,6 @@
 
 (sys/io/print-ln "START")
 (time-it "start")
-(send last (list 'PING 0))
+(send last (list :PING 0))
 
 
