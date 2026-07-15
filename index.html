@@ -5,27 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>slight</title>
 <style>
-    body     { font-family: monospace; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
-    textarea { width: 100%; height: 16rem; font-family: monospace; font-size: 0.9rem; }
-    pre      { background: #111; color: #ddd; padding: 1rem; min-height: 8rem; white-space: pre-wrap; }
-    button   { font-family: monospace; font-size: 1rem; padding: 0.25rem 1.5rem; }
+    .input  { font-family: monospace; }
+    .output { font-family: monospace; background: #369; color: #fff; }
+    .error  { font-family: monospace; background: #963; color: #fff; }
 </style>
 </head>
 <body>
-<h1>slight</h1>
-<textarea id="source" spellcheck="false">
+<table cellpadding="5" cellspacing="5" border="5">
+    <tr>
+        <td>
+            <textarea id="source" class="input" rows="40" cols="80">
+
+(defun fact (n)
+    (if (== n 0) 1
+        (* n (fact (- n 1)))))
+
 (defun fib (n)
-    (if (&lt; n 2) n
+    (if (< n 2) n
         (+ (fib (- n 1)) (fib (- n 2)))))
 
-(sys/io/print-ln "fib(20) = " (fib 20))
-</textarea>
-<p><button id="run">run</button></p>
-<pre id="output"></pre>
+(pprint (fact (fib 6)))
+
+            </textarea>
+        </td>
+        <td width="40%" valign="top">
+            <div id="stdout"></div>
+        </td>
+    </tr>
+    <tr>
+        <td>
+            <button id="run">run</button>
+        </td>
+        <td>
+            <span><input type="checkbox" /> debug</span>
+        </td>
+    </tr>
+</table>
 <script type="module">
     import { run } from './js/src/browser.js';
 
-    const output  = document.getElementById('output');
+    const output  = document.getElementById('stdout');
     const source  = document.getElementById('source');
     const button  = document.getElementById('run');
     const prelude = await (await fetch('./lib/Prelude.slight')).text();
@@ -33,7 +52,7 @@
     const log = console.log.bind(console);
     console.log = (...args) => {
         log(...args);
-        output.textContent += args.join(' ') + "\n";
+        output.innerHTML = output.innerHTML + '<div class="output">' + args.join(' ') + '</div>';
     };
 
     button.addEventListener('click', async () => {
@@ -42,7 +61,7 @@
         try {
             await run(source.value, prelude);
         } catch (e) {
-            output.textContent += `ERROR: ${e}\n`;
+            output.innerHTML += '<div class="error">' + `ERROR: ${e}` + '</div>';
         } finally {
             button.disabled = false;
         }
