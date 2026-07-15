@@ -20,8 +20,33 @@ function haltKey (pid : Pid)        : string { return `halt:${pid.ident}` }
 function mailKey (chan_id : number) : string { return `mail:${chan_id}`   }
 function sysKey (n : number)        : string { return `sys:${n}`          }
 
+class RunQueue {
+    public front : Process[] = [];
+    public back  : Process[] = [];
+
+    hasWork () : boolean {
+        return (this.front.length + this.back.length) > 0;
+    }
+
+    unshift (p : Process) : void {
+        this.front.push(p);
+    }
+
+    push (p : Process) : void {
+        this.back.push(p);
+    }
+
+    pop () : Process {
+        if (this.back.length == 0) {
+            this.back  = this.front.reverse();
+            this.front = [];
+        }
+        return this.back.pop()!;
+    }
+}
+
 export class Strand {
-    public running : Process[]             = [];
+    public runqueue : RunQueue = new RunQueue();
     public halted  : Map<number,Process>   = new Map<number,Process>();
     public blocked : Map<string,Process[]> = new Map<string,Process[]>();
     public procs   : Map<number,Process>   = new Map<number,Process>();
@@ -93,7 +118,7 @@ export class Strand {
     }
 
     private enqueueProcess (proc : Process) : void {
-        this.running.unshift(proc);
+        this.runqueue.unshift(proc);
         if (this.wake != undefined) {
             this.wake();
             this.wake = undefined;
@@ -157,7 +182,7 @@ export class Strand {
         let proc : Process = { pid, kont, steps : 0, mailbox : { id : ++this.CHAN_SEQ, queue : [] } };
         this.procs.set( pid.ident, proc );
         // push this so it runs immedately
-        this.running.push(proc);
+        this.runqueue.push(proc);
         return pid;
     }
 
@@ -236,8 +261,8 @@ export class Strand {
 
         let hop_every = 25;
         while (true) {
-            if (this.running.length > 0) {
-                let proc = this.running.pop()!;
+            if (this.runqueue.hasWork()) {
+                let proc = this.runqueue.pop()!;
                 if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
                 this.step(proc, this.DEFAULT_QUOTA);
                 this.park(proc);
