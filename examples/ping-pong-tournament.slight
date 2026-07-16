@@ -1,0 +1,97 @@
+
+
+(defun Player (max-delay counter)
+    (let msg (recv))
+    (let tag      (car msg))
+    (let reply-to (cadr msg))
+    ;(let delay    (rand max-delay))
+    ;(sys/io/print-ln "... " tag " -> " reply-to " in " $$ " at " counter " with " delay)
+    ;(sleep max-delay)
+    (case tag
+        (:Serve
+            (send reply-to (list :Ping $$)) (yield (Player max-delay counter)))
+        (:Ping
+            (send reply-to (list :Pong $$)) (yield (Player max-delay (+ counter 1))))
+        (:Pong
+            (send reply-to (list :Ping $$)) (yield (Player max-delay (+ counter 1))))
+        (:EXIT
+            (send reply-to (list :Final counter)))))
+
+
+(defun PingPong (duration)
+    (let p1 (fork (Player 0 0)))
+    (let p2 (fork (Player 0 0)))
+    ;(sys/io/print-ln "... starting game between " p1 " and " p2 " for " duration "ms")
+    (recv)
+    (send p1 (list :Serve p2))
+    (sleep duration)
+    (send p1 (list :EXIT $$))
+    (send p2 (list :EXIT $$))
+    (list (list p1 (recv))
+          (list p2 (recv))))
+
+
+(defun setup-tournament (n game duration)
+    (when (> n 0)
+        (cons (fork (game duration)) (setup-tournament (- n 1) game duration))))
+
+(defun start-tournament (pids)
+    (map (lambda (pid) (send pid :START) pid) pids))
+
+(defun await-results (pids)
+    (map (lambda (pid) (join pid)) pids))
+
+(defun converged? (lhs rhs tolerance)
+    ;(pprint (list (abs (- (cadr lhs) (cadr rhs))) tolerance))
+    (<= (abs (- (cadr lhs) (cadr rhs))) tolerance))
+
+(defun check-results (results)
+    (reduce (car results) (lambda (acc r)
+        (let acc-p1 (car  acc))
+        (let acc-p2 (cadr acc))
+        (let r-p1   (car  r))
+        (let r-p2   (cadr r))
+        (if (and (converged? (cadr acc-p1) (cadr r-p1) 1)
+                 (converged? (cadr acc-p2) (cadr r-p2) 1))
+            acc
+            (do (sys/io/print-ln "... results diverged from " acc " to " r) r))
+    ) (cdr results)))
+
+(defun calculate-totals (results)
+    (reduce 0 (lambda (acc r)
+        (+ acc
+            (+ (cadr (cadr (car  r)))
+               (cadr (cadr (cadr r))))))
+        results))
+
+(let num-games (car @ARGV))
+(let game-duration (cadr @ARGV))
+
+(sys/io/print-ln "Running " num-games " for " game-duration)
+
+(sys/io/print-ln "Setting up Tournament ...")
+(time-it "setup-ping-pongs")
+(let setup-pids (setup-tournament num-games PingPong game-duration))
+(time-it/end "setup-ping-pongs")
+(sys/io/print-ln "...")
+
+(sys/io/print-ln "Starting Tournament ...")
+(time-it "start-ping-pongs")
+(let running-pids (start-tournament setup-pids))
+(time-it/end "start-ping-pongs")
+(sys/io/print-ln "...")
+
+(sys/io/print-ln "Awaitig Tournament Results ...")
+(time-it "play-ping-pongs")
+(let results (await-results running-pids))
+(time-it/end "play-ping-pongs")
+(sys/io/print-ln "...")
+
+(sys/io/print-ln "Analyzing Tournament Results ...")
+;(map pprint results)
+(sys/io/print-ln " Final Results : " (check-results results))
+(sys/io/print-ln "Total Messages : " (calculate-totals results))
+
+
+
+

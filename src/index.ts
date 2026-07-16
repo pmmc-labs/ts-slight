@@ -1,6 +1,7 @@
 import { readFileSync }   from 'node:fs';
 import { DEBUG }          from './debug.ts';
 import { parse }          from './parser.ts';
+import { expand }         from './reader.ts';
 import { initalizeEnv }   from './builtins.ts';
 import { Strand }         from './strand.ts';
 import {
@@ -34,8 +35,8 @@ export async function main () {
         loadPrelude(),
         readFileSync(path, 'utf8')
     ].join("\n;; -- \n");
-    let exprs   = parse(source);
 
+    let exprs = expand(parse(source));
     if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
 
     let env = newMapEnv();
@@ -64,7 +65,7 @@ export async function prove (test_source : string) {
         test_source
     ].join("\n;; -- \n");
 
-    let exprs  = parse(source);
+    let exprs = expand(parse(source));
     if (DEBUG) console.log("Test Parsed: ", exprs.map(pprint));
     let env = initalizeEnv();
     let strand = new Strand();
