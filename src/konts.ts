@@ -23,8 +23,8 @@ export type ScopeExit = { type : 'SCOPE_EXIT' } & Kontinuation
 export type Drop      = { type : 'DROP'       } & Kontinuation
 export type Err       = { type : 'ERR',   error : ERROR } & Kontinuation
 export type Block     = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
-export type Yield     = { type : 'YIELD', result : MaybeTERM } & Kontinuation
-export type Halt      = { type : 'HALT',  result : MaybeTERM, env : Env }
+export type Yield     = { type : 'YIELD' } & Kontinuation
+export type Halt      = { type : 'HALT', result : MaybeTERM, env : Env }
 
 export type Kontinue =
     | EvalExpr
@@ -57,9 +57,9 @@ export function pprintKont (kont : Kontinue) : string {
     case 'SCOPE_EXIT' : break;
     case 'SEND'       : break;
     case 'SYSCALL'    : break;
+    case 'YIELD'      : break;
     case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
     case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
-    case 'YIELD'      : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
     }
     return kontStr;
@@ -117,8 +117,8 @@ export function Syscall (env : Env, kont : Kontinue) : Syscall {
     return { type : 'SYSCALL', env, kont }
 }
 
-export function Yield (env : Env, kont : Kontinue, result : TERM | undefined = undefined) : Yield {
-    return { type : 'YIELD', result, env, kont }
+export function Yield (env : Env, kont : Kontinue) : Yield {
+    return { type : 'YIELD', env, kont }
 }
 
 export function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
