@@ -4,7 +4,7 @@ import {
     initalizeEnv,
     liftListOp,
 }   from './builtins.ts';
-import { Strand }         from './strand.ts';
+import { Strand, ProcessResult } from './strand.ts';
 import {
     type Sym, type Str,
     newMapEnv,
@@ -24,7 +24,7 @@ export * from './syscalls.ts';
 export * from './konts.ts';
 export * from './strand.ts';
 
-export async function run (source : string, prelude : string = '', args : string[] = []) : Promise<Process[]> {
+export async function run (source : string, prelude : string = '', args : string[] = []) : Promise<ProcessResult[]> {
     let exprs = parse([ prelude, source ].join("\n;; -- \n"));
 
     if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
@@ -36,8 +36,8 @@ export async function run (source : string, prelude : string = '', args : string
     let strand = new Strand();
     let halted = await strand.run(exprs, env);
     for (const proc of halted) {
-        if (proc.kont.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+        if (proc.type == 'ERR') {
+            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
         }
     }
     return halted;

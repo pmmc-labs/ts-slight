@@ -45,9 +45,14 @@ class RunQueue {
     }
 }
 
+export type ProcessResult =
+    | { type : 'HALT', result : TERM,  pid : Pid, steps : number }
+    | { type : 'ERR',   error : ERROR, pid : Pid, steps : number }
+
 export class Strand {
     public runqueue : RunQueue = new RunQueue();
-    public halted  : Map<number,Process>   = new Map<number,Process>();
+    //public halted  : Map<number,Process>   = new Map<number,Process>();
+    public halted  : Map<number,ProcessResult> = new Map<number,ProcessResult>();
     public blocked : Map<string,Process[]> = new Map<string,Process[]>();
     public procs   : Map<number,Process>   = new Map<number,Process>();
 
@@ -64,7 +69,8 @@ export class Strand {
 
     metrics () : { procs : number, steps : number, sent : number, dispatches : number } {
         let steps = 0;
-        for (const p of this.procs.values()) steps += p.steps;
+        for (const p of this.procs.values())  steps += p.steps;
+        for (const h of this.halted.values()) steps += h.steps;
         return {
             procs      : this.PID_SEQ,
             steps      : steps,
@@ -160,11 +166,11 @@ export class Strand {
         let finished = this.halted.get( blocker_pid.ident );
         if (finished == undefined) {
             this.awaitKey( haltKey(blocker_pid), blockee );
-        } else if (finished.kont.type == 'HALT') {
-            if (finished.kont.result == undefined) throw new Error(`Expected result in HALT!`);
-            this.resumeWaiter( blockee, finished.kont.result );
-        } else if (finished.kont.type == 'ERR') {
-            this.faultWaiter( blockee, finished.kont.error );
+        } else if (finished.type == 'HALT') {
+            if (finished.result == undefined) throw new Error(`Expected result in HALT!`);
+            this.resumeWaiter( blockee, finished.result );
+        } else if (finished.type == 'ERR') {
+            this.faultWaiter( blockee, finished.error );
         } else {
             throw new Error(`A halted process should be HALT or ERR`);
         }
@@ -172,13 +178,19 @@ export class Strand {
 
     private haltProcess (proc : Process) : void {
         if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
+        let proc_result : ProcessResult;
         if (proc.kont.type == 'HALT') {
             if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
             this.deliver( haltKey(proc.pid), proc.kont.result );
+            proc_result = { type : 'HALT', result : proc.kont.result, pid : proc.pid, steps : proc.steps }
         } else if (proc.kont.type == 'ERR') {
             this.deliverFault( haltKey(proc.pid), proc.kont.error );
+            proc_result = { type : 'ERR', error : proc.kont.error, pid : proc.pid, steps : proc.steps }
+        } else {
+            throw new Error(`A halted process should be HALT or ERR`);
         }
-        this.halted.set( proc.pid.ident, proc );
+        this.halted.set( proc.pid.ident, proc_result );
+        this.procs.delete( proc.pid.ident );
     }
 
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
@@ -247,7 +259,7 @@ export class Strand {
         });
     }
 
-    async run (exprs : TERM[], env : MapEnv) : Promise<Process[]> {
+    async run (exprs : TERM[], env : MapEnv) : Promise<ProcessResult[]> {
         env = newMapEnv( env ); // for the (defun)s
 
         let to_run = [];

@@ -61,7 +61,7 @@ export async function main () {
         heap_poll = setInterval(() => {
             let used = process.memoryUsage().heapUsed;
             if (used > peak_heap) peak_heap = used;
-        }, 100);
+        }, 25);
         heap_poll.unref();
     }
 
@@ -73,7 +73,12 @@ export async function main () {
 
     if (METRICS) {
         if (heap_poll != undefined) clearInterval(heap_poll);
-        if (gc_obs != undefined) gc_obs.disconnect();
+        if (gc_obs != undefined) {
+            // the observer callback needs event-loop turns the strand loop
+            // rarely grants; drain whatever is still buffered synchronously
+            for (const e of gc_obs.takeRecords()) { gc_ms += e.duration; gc_count++; }
+            gc_obs.disconnect();
+        }
         let mem = process.memoryUsage();
         if (mem.heapUsed > peak_heap) peak_heap = mem.heapUsed;
         console.log('@@METRICS ' + JSON.stringify({
@@ -88,10 +93,10 @@ export async function main () {
 
     for (const proc of halted) {
         if (DEBUG) console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
-        if (proc.kont.type == 'HALT') {
-            if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-        } else if (proc.kont.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+        if (proc.type == 'HALT') {
+            if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
+        } else if (proc.type == 'ERR') {
+            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
         }
         if (DEBUG) console.groupEnd();
     }
@@ -113,10 +118,10 @@ export async function prove (test_source : string) {
     console.timeEnd('tests');
     for (const proc of halted) {
         console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
-        if (proc.kont.type == 'HALT') {
-            console.log(pprint(proc.pid), ' HALTED: ', proc.kont.result == undefined ? '!!!' : pprint(proc.kont.result));
-        } else if (proc.kont.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.kont.error));
+        if (proc.type == 'HALT') {
+            console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
+        } else if (proc.type == 'ERR') {
+            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
         }
         console.groupEnd();
     }

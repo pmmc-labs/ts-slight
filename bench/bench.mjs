@@ -30,6 +30,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const argv     = process.argv.slice(2);
 const FULL     = argv.includes('--full');
 const NO_BUILD = argv.includes('--no-build');
+const GC       = argv.includes('--gc'); // --trace-gc adds ~4% wall overhead, so opt-in
 const t_ix     = argv.indexOf('--trials');
 const TRIALS   = t_ix >= 0 ? parseInt(argv[t_ix + 1], 10) : 3;
 
@@ -76,7 +77,7 @@ function fmt (x, digits = 0) {
 }
 
 function runOne (cfg) {
-    let res = spawnSync('node', [ 'js/bin/slight.js', cfg.file, ...cfg.args ], {
+    let res = spawnSync('node', [ ...(GC ? [ '--trace-gc' ] : []), 'js/bin/slight.js', cfg.file, ...cfg.args ], {
         cwd       : ROOT,
         env       : { ...process.env, SLIGHT_METRICS : '1', DEBUG : '0' },
         encoding  : 'utf8',
@@ -89,6 +90,20 @@ function runOne (cfg) {
     let mline = lines.find((l) => l.startsWith('@@METRICS '));
     if (mline == undefined) throw new Error(`no @@METRICS line from ${cfg.file} (SLIGHT_METRICS not wired up?)`);
     let metrics = JSON.parse(mline.slice('@@METRICS '.length));
+
+    // Node 23 no longer emits 'gc' performance entries, so the runtime's
+    // gc_ms is always 0 -- sum the main-thread pauses from --trace-gc instead
+    // (emitted on stdout: "..., pooled: 239 MB, 0.12 / 0.00 ms (average mu = ...)")
+    const GC_LINE = /^\[\d+:0x[0-9a-f]+\]/;
+    let gc_ms = 0, gc_count = 0;
+    for (const line of lines) {
+        if (!GC_LINE.test(line)) continue;
+        let m = line.match(/, ([\d.]+) \/ [\d.]+ ms/);
+        if (m) { gc_ms += parseFloat(m[1]); gc_count++; }
+    }
+    metrics.gc_ms    = Math.round(gc_ms * 100) / 100;
+    metrics.gc_count = gc_count;
+    lines = lines.filter((l) => !GC_LINE.test(l)); // keep GC noise out of phases/canonical
 
     let phases = {};
     for (const line of lines) {
