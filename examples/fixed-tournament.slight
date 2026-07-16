@@ -1,0 +1,79 @@
+;; -----------------------------------------------------------------------------
+;; Fixed-work ping-pong tournament: N games, each playing exactly R rallies.
+;;
+;;   usage: slight examples/fixed-tournament.slight <num-games> <rallies>
+;;
+;; Unlike the duration-based tournament, total work here is fixed, so wall
+;; time is the metric and correctness is exact: every game must finish with
+;; counters (R R-1) -- any other result prints a FAIL.
+;; -----------------------------------------------------------------------------
+
+(defun Player (game limit counter)
+    (let msg (recv))
+    (let tag      (car msg))
+    (let reply-to (cadr msg))
+    (case tag
+        (:Serve
+            (send reply-to (list :Ping $$)) (yield (Player game limit counter)))
+        (:Ping
+            (rally game limit (+ counter 1) reply-to :Pong))
+        (:Pong
+            (rally game limit (+ counter 1) reply-to :Ping))
+        (:Stop
+            (send game (list :Final counter)))))
+
+;; one rally step: bump the counter, either keep the volley going or, once
+;; this player reaches the limit, stop the peer and report to the game
+(defun rally (game limit counter reply-to reply-tag)
+    (if (>= counter limit)
+        (do (send reply-to (list :Stop $$))
+            (send game (list :Final counter)))
+        (do (send reply-to (list reply-tag $$))
+            (yield (Player game limit counter)))))
+
+(defun Game (limit)
+    (let me $$) ;; NOTE: $$ inside the (fork) expr would be the child's pid
+    (let p1 (fork (Player me limit 0)))
+    (let p2 (fork (Player me limit 0)))
+    (recv) ;; the :START gate
+    (send p1 (list :Serve p2))
+    ;; p2 always reaches the limit first, so finals arrive (R) then (R-1)
+    (list (cadr (recv)) (cadr (recv))))
+
+(defun setup-tournament (n game limit)
+    (when (> n 0)
+        (cons (fork (game limit)) (setup-tournament (- n 1) game limit))))
+
+(defun start-tournament (pids)
+    (map (lambda (pid) (send pid :START) pid) pids))
+
+(defun await-results (pids)
+    (map (lambda (pid) (join pid)) pids))
+
+(defun verify-results (expected results)
+    (reduce 0 (lambda (failures r)
+        (if (eq? r expected)
+            failures
+            (do (sys/io/print-ln "FAIL: expected " expected " got " r)
+                (+ failures 1))))
+        results))
+
+(let num-games (car @ARGV))
+(let rallies   (cadr @ARGV))
+
+(sys/io/print-ln "tournament: " num-games " games x " rallies " rallies")
+
+(time-it "spawn")
+(let pids (setup-tournament num-games Game rallies))
+(time-it/end "spawn")
+
+(yield ()) ;; let every game fork its players and park at recv
+
+(time-it "play")
+(let results (await-results (start-tournament pids)))
+(time-it/end "play")
+
+(let failures (verify-results (list rallies (- rallies 1)) results))
+(if (== failures 0)
+    (sys/io/print-ln "PASS: " num-games " games, every game exactly (" rallies " " (- rallies 1) ")")
+    (sys/io/print-ln "FAIL: " failures " of " num-games " games wrong"))

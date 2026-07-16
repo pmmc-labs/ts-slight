@@ -8,6 +8,7 @@
     "build"     : "rm -rf ./js && tsc",
     "test"      : "rm -rf ./js && tsc && node js/tests/001-basic.js",
     "self-test" : "rm -rf ./js && tsc && node js/tests/100-self-test.js",
-    "slight"    : "rm -rf ./js && tsc && node js/bin/slight.js"
+    "slight"    : "rm -rf ./js && tsc && node js/bin/slight.js",
+    "bench"     : "node bench/bench.mjs"
   }
 }

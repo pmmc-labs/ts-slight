@@ -1,4 +1,5 @@
 import { readFileSync }   from 'node:fs';
+import { PerformanceObserver, performance } from 'node:perf_hooks';
 import { DEBUG }          from './debug.ts';
 import { parse }          from './parser.ts';
 import { expand }         from './reader.ts';
@@ -44,9 +45,47 @@ export async function main () {
     env = initalizeEnv( env );
 
     let strand = new Strand();
+
+    // when SLIGHT_METRICS=1, emit a single machine-readable `@@METRICS {...}`
+    // line after the run: wall clock, kont transitions, messages, dispatches,
+    // GC time and peak heap -- consumed by bench/bench.mjs
+    const METRICS = (globalThis as any).process?.env?.["SLIGHT_METRICS"] == '1';
+    let gc_ms = 0, gc_count = 0, peak_heap = 0;
+    let gc_obs : PerformanceObserver | undefined;
+    let heap_poll : ReturnType<typeof setInterval> | undefined;
+    if (METRICS) {
+        gc_obs = new PerformanceObserver((entries) => {
+            for (const e of entries.getEntries()) { gc_ms += e.duration; gc_count++; }
+        });
+        gc_obs.observe({ entryTypes : ['gc'] });
+        heap_poll = setInterval(() => {
+            let used = process.memoryUsage().heapUsed;
+            if (used > peak_heap) peak_heap = used;
+        }, 100);
+        heap_poll.unref();
+    }
+
     console.time('slight-run');
+    let wall_start = performance.now();
     let halted = await strand.run(exprs, env);
+    let wall_ms = performance.now() - wall_start;
     console.timeEnd('slight-run');
+
+    if (METRICS) {
+        if (heap_poll != undefined) clearInterval(heap_poll);
+        if (gc_obs != undefined) gc_obs.disconnect();
+        let mem = process.memoryUsage();
+        if (mem.heapUsed > peak_heap) peak_heap = mem.heapUsed;
+        console.log('@@METRICS ' + JSON.stringify({
+            wall_ms      : Math.round(wall_ms * 1000) / 1000,
+            ...strand.metrics(),
+            gc_ms        : Math.round(gc_ms * 1000) / 1000,
+            gc_count     : gc_count,
+            peak_heap_mb : Math.round(peak_heap / 1048576 * 10) / 10,
+            rss_mb       : Math.round(mem.rss / 1048576 * 10) / 10,
+        }));
+    }
+
     for (const proc of halted) {
         if (DEBUG) console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
         if (proc.kont.type == 'HALT') {

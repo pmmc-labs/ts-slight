@@ -32,8 +32,8 @@
             (time-it/end "pings"))))
 
 (let self $$)
-(let actor-count 10000)
-(let ping-count  100)
+(let actor-count (if (nil? @ARGV) 10000 (car  @ARGV)))
+(let ping-count  (if (nil? @ARGV) 100   (cadr @ARGV)))
 
 (sys/io/print-ln "INIT with " actor-count " actors, sending " ping-count " messages")
 (time-it "setup")

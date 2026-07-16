@@ -3,7 +3,9 @@
     (if (< n 2) n
         (+ (fib (- n 1)) (fib (- n 2)))))
 
+(let n (if (nil? @ARGV) 27 (car @ARGV)))
+
 (time-it "fib")
-(sys/io/print-ln "fib(27) = " (fib 27))
+(sys/io/print-ln "fib(" n ") = " (fib n))
 (time-it/end "fib")
 

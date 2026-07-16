@@ -58,6 +58,21 @@ export class Strand {
     private inflight      = 0;
     private wake : (() => void) | undefined;
 
+    // benchmark/observability counters, see metrics()
+    private SENT_SEQ     = 0;
+    private DISPATCH_SEQ = 0;
+
+    metrics () : { procs : number, steps : number, sent : number, dispatches : number } {
+        let steps = 0;
+        for (const p of this.procs.values()) steps += p.steps;
+        return {
+            procs      : this.PID_SEQ,
+            steps      : steps,
+            sent       : this.SENT_SEQ,
+            dispatches : this.DISPATCH_SEQ,
+        };
+    }
+
     private awaitKey (key : string, proc : Process) : void {
         if (DEBUG) console.log(`#### : Blocking ${pprint(proc.pid)} on ${key}`);
         let waiters = this.blocked.get(key) ?? [];
@@ -104,6 +119,7 @@ export class Strand {
             return;
         }
         target.mailbox.queue.push(msg);
+        this.SENT_SEQ++;
         let key = mailKey(target.mailbox.id);
         if (this.blocked.has(key)) {
             // the queue stays the source of truth: push above, shift here
@@ -262,6 +278,7 @@ export class Strand {
         while (true) {
             if (this.runqueue.hasWork()) {
                 let proc = this.runqueue.pop()!;
+                this.DISPATCH_SEQ++;
                 if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
                 this.step(proc, this.DEFAULT_QUOTA);
                 this.park(proc);
