@@ -1,0 +1,117 @@
+
+;; -----------------------------------------------------------------------------
+
+(defun build-grid-row (size init-cell start)
+    (if (< size 0) start
+        (build-grid-row (- size 1) init-cell (cons (init-cell size) start))))
+
+(defun init-grid (h w init-cell)
+    (list
+        (list h w)
+        (build-grid-row h (lambda (x)
+            (build-grid-row w (lambda (y)
+                (init-cell x y))
+                    ())) ())))
+
+(defun grid-shape (grid) (car grid))
+(defun grid-board (grid) (cadr grid))
+
+(defun wrap-around (n max)
+    (if (< n 0) (+ max n) (if (> n max) (- n max) n )))
+
+(defun grid-cell-at (x y grid)
+    (let shape (grid-shape grid))
+    (nth (wrap-around y (cadr shape)) (nth (wrap-around x (car shape)) (grid-board grid))))
+
+
+;; -----------------------------------------------------------------------------
+
+(defun init-grid-cell (x y)
+    (list x y (if (== (rand 2) 0) :DEAD :LIVE )))
+
+(defun all-directions () (list :N :NE :E :SE :S :SW :W :NW))
+
+(defun get-neighbor-cell-for-direction (cell dir grid)
+    (let x (car  cell))
+    (let y (cadr cell))
+    (case dir
+        (:N  (grid-cell-at (dec x)      y  grid))
+        (:NE (grid-cell-at (dec x) (inc y) grid))
+        (:E  (grid-cell-at      x  (inc y) grid))
+        (:SE (grid-cell-at (inc x) (inc y) grid))
+        (:S  (grid-cell-at (inc x)      y  grid))
+        (:SW (grid-cell-at (inc x) (dec y) grid))
+        (:W  (grid-cell-at      x  (dec y) grid))
+        (:NW (grid-cell-at (dec x) (dec y) grid))))
+
+(defun get-cell-neighbors-old (cell grid)
+    (map (lambda (d)
+        (get-neighbor-cell-for-direction cell d grid))
+            (all-directions)))
+
+(defun get-cell-neighbors (cell grid)
+    (let x (car  cell))
+    (let y (cadr cell))
+    (map
+        (lambda (pair) (grid-cell-at (+ x (car pair)) (+ y (cadr pair)) grid))
+        (list '(-1 0) '(-1 1) '(0 1) '(1 1) '(1 0) '(1 -1) '(0 -1) '(-1 -1))))
+
+;; -----------------------------------------------------------------------------
+
+(defun apply-rules (cell n)
+    (list
+        (car  cell)
+        (cadr cell)
+        (case (car (cddr cell))
+            (:LIVE
+                (cond
+                    ((< n 2) :DEAD)
+                    ((> n 3) :DEAD)
+                    (#true   :LIVE)))
+            (:DEAD
+                (if (== n 3) :LIVE :DEAD)))))
+
+(defun count-living-neighbors (neighbors)
+    (reduce 0 (lambda (acc neighbor)
+        (if (eq? (car (cddr neighbor)) :LIVE) (+ acc 1) acc ))
+            neighbors))
+
+(defun tick (grid)
+    (list
+        (grid-shape grid)
+        (map (lambda (row)
+            (map (lambda (cell)
+                (apply-rules
+                    cell
+                    (count-living-neighbors
+                        (get-cell-neighbors cell grid))))
+            row))
+        (grid-board grid))))
+
+(defun run-n-generations (n grid gen)
+    (if (== n 0) grid
+        (do
+            (display-grid grid gen)
+            (run-n-generations (- n 1) (tick grid) (+ gen 1)))))
+
+;; -----------------------------------------------------------------------------
+
+(defun display-grid (grid gen)
+    (sys/io/print-ln "generation :" gen)
+    (map (lambda (r)
+        (sys/io/print-ln (map (lambda (c)
+            (if (eq? (car (cddr c)) :LIVE) :@ :_ )
+        ) r)))
+    (grid-board grid)))
+
+(defun main (generations)
+    (let grid (init-grid 20 60 init-grid-cell))
+    (run-n-generations generations grid 0))
+
+(let n (if (nil? @ARGV) 25 (car @ARGV)))
+(main n)
+
+
+
+
+
