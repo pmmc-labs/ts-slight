@@ -9,7 +9,7 @@
     (let h (- size 1))
     (let w (- size 1))
     (list
-        size
+        (- size 1)
         (build-grid-row h (lambda (x)
             (build-grid-row w (lambda (y)
                 (init-cell x y))
@@ -25,13 +25,11 @@
     (let max (grid-size grid))
     (nth (wrap-around y max) (nth (wrap-around x max) (grid-board grid))))
 
-(defun display-grid (grid)
-    (map pprint (grid-board grid)))
 
 ;; -----------------------------------------------------------------------------
 
 (defun init-grid-cell (x y)
-    (list x y (rand 1)))
+    (list x y (if (== (rand 2) 0) :DEAD :LIVE )))
 
 (defun all-directions () (list :N :NE :E :SE :S :SW :W :NW))
 
@@ -55,18 +53,53 @@
 
 ;; -----------------------------------------------------------------------------
 
+(defun apply-rules (cell n)
+    (list
+        (car  cell)
+        (cadr cell)
+        (case (car (cddr cell))
+            (:LIVE
+                (cond
+                    ((< n 2) :DEAD)
+                    ((> n 3) :DEAD)
+                    (#true   :LIVE)))
+            (:DEAD
+                (if (== n 3) :LIVE :DEAD)))))
+
+(defun count-living-neighbors (neighbors)
+    (reduce 0 (lambda (acc neighbor)
+        (if (eq? (nth 2 neighbor) :LIVE) (+ acc 1) acc ))
+            neighbors))
+
+(defun tick (grid)
+    (list
+        (grid-size grid)
+        (map (lambda (row)
+            (map (lambda (cell)
+                (apply-rules
+                    cell
+                    (count-living-neighbors
+                        (get-cell-neighbors cell grid))))
+            row))
+        (grid-board grid))))
+
+(defun display-grid (grid gen)
+    (sys/io/print-ln "generation :" gen)
+    (map (lambda (r)
+        (sys/io/print-ln (map (lambda (c)
+            (if (eq? (car (cddr c)) :LIVE) :X :O)
+        ) r)))
+    (grid-board grid)))
+
+(defun run-n-generations (n grid gen)
+    (if (== n 0) grid
+        (do
+            (display-grid grid gen)
+            (run-n-generations (- n 1) (tick grid) (+ gen 1)))))
+
+
 (let grid (init-grid 10 init-grid-cell))
-(display-grid grid)
-
-(let cell (grid-cell-at 0 2 grid))
-(pprint cell)
-(pprint (get-cell-neighbors cell grid))
-
-
-
-
-
-
+(run-n-generations 10 grid 0)
 
 
 
