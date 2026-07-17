@@ -44,8 +44,8 @@ export function parse (source : string) : TERM[] {
             break;
         case ')': {
             let frame = stack.pop();
-            if (frame == undefined)  throw new Error(`PARSE ERROR: unexpected ')'`);
-            if (isQuoteFrame(frame)) throw new Error(`PARSE ERROR: dangling ' before ')'`);
+            if (frame == undefined)  { console.log(stack); throw new Error(`PARSE ERROR: unexpected ')'`); }
+            if (isQuoteFrame(frame)) { console.log(stack); throw new Error(`PARSE ERROR: dangling ' before ')'`); }
             emit(list(...frame));
             break;
         }
@@ -57,7 +57,10 @@ export function parse (source : string) : TERM[] {
         }
         default:
             if (token.startsWith('"')) {
-                if (token.length < 2 || !token.endsWith('"')) throw new Error(`PARSE ERROR: unterminated string ${token}`);
+                if (token.length < 2 || !token.endsWith('"')) {
+                    console.log(stack);
+                    throw new Error(`PARSE ERROR: unterminated string ${token}`);
+                }
                 emit(str(token.slice(1, -1)));
             } else if (token == '#true') {
                 emit(bool(true));
@@ -79,6 +82,7 @@ export function parse (source : string) : TERM[] {
     }
 
     if (stack.length > 0) {
+        console.log(stack);
         if (isQuoteFrame(stack.at(-1))) throw new Error(`PARSE ERROR: ' at end of input`);
         throw new Error(`PARSE ERROR: unclosed '('`);
     }

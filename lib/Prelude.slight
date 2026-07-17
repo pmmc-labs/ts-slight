@@ -2,6 +2,9 @@
 ;; Begin Prelude
 ;; -----------------------------------------------------------------------------
 
+(defun inc (n) (+ n 1))
+(defun dec (n) (- n 1))
+
 ;; -----------------------------------------------------------------------------
 ;; List functions
 ;; -----------------------------------------------------------------------------
@@ -9,6 +12,8 @@
 (defun length (lst)
     (if (nil? lst) 0
         (+ 1 (length (tail lst)))))
+
+(defun nth (i lst) (if (== i 0) (head lst) (nth (- i 1) (tail lst))))
 
 (defun map (f lst)
     (if (nil? lst) ()
@@ -41,12 +46,6 @@
 
 (defun product (lst)
     (reduce 1 (lambda (acc n) (* acc n)) lst))
-
-(defun max (lst)
-    (reduce 0 (lambda (acc n) (max acc n)) lst))
-
-(defun min (lst)
-    (reduce 0 (lambda (acc n) (min acc n)) lst))
 
 ;; -----------------------------------------------------------------------------
 ;; System functions

@@ -1,1 +1,81 @@
 
+;; -----------------------------------------------------------------------------
+
+(defun build-grid-row (size init-cell start)
+    (if (< size 0) start
+        (build-grid-row (- size 1) init-cell (cons (init-cell size) start))))
+
+(defun init-grid (size init-cell)
+    (let h (- size 1))
+    (let w (- size 1))
+    (list
+        (list h w)
+        (build-grid-row h (lambda (x)
+            (build-grid-row w (lambda (y)
+                (init-cell x y))
+                    ())) ())))
+
+(defun grid-height (grid) (car  (car grid)))
+(defun grid-width  (grid) (cadr (car grid)))
+(defun grid-board  (grid) (cadr grid))
+
+(defun wrap-around (n max)
+    (if (< n 0) (+ max n) (if (> n max) (- n max) n )))
+
+(defun grid-cell-at (x y grid)
+    (let h (grid-height grid))
+    (let w (grid-width  grid))
+    (nth (wrap-around y w) (nth (wrap-around x h) (grid-board grid))))
+
+(defun display-grid (grid)
+    (map pprint (grid-board grid)))
+
+;; -----------------------------------------------------------------------------
+
+(defun init-cell (x y)
+    (list x y))
+
+(defun cell-x (c) (car  c))
+(defun cell-y (c) (cadr c))
+
+;; -----------------------------------------------------------------------------
+
+(defun all-directions () (list :N :NE :E :SE :S :SW :W :NW))
+
+(defun get-neighbor-cell-for-direction (cell dir grid)
+    (let x (cell-x cell))
+    (let y (cell-y cell))
+    (case dir
+        (:N  (grid-cell-at (dec x)      y  grid))
+        (:NE (grid-cell-at (dec x) (inc y) grid))
+        (:E  (grid-cell-at      x  (inc y) grid))
+        (:SE (grid-cell-at (inc x) (inc y) grid))
+        (:S  (grid-cell-at (inc x)      y  grid))
+        (:SW (grid-cell-at (inc x) (dec y) grid))
+        (:W  (grid-cell-at      x  (dec y) grid))
+        (:NW (grid-cell-at (dec x) (dec y) grid))))
+
+(defun get-cell-neighbors (cell grid)
+    (map (lambda (d)
+        (get-neighbor-cell-for-direction cell d grid))
+            (all-directions)))
+
+;; -----------------------------------------------------------------------------
+
+(let grid (init-grid 10 init-cell))
+(display-grid grid)
+
+(let cell (grid-cell-at 3 5 grid))
+(pprint cell)
+(pprint (get-cell-neighbors cell grid))
+
+
+
+
+
+
+
+
+
+
+
