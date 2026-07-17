@@ -194,6 +194,8 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     // NOTE: this is just a place to park this work now
     // until the I/O system evolves
     env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
+        if (isNil(args)) return NIL;
+        if (isCons(args.first)) args = args.first;
         console.log(uncons(args).map((arg) =>
             isStr(arg) ? arg.value : pprint(arg)
         ).join(''));

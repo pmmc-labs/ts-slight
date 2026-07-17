@@ -5,25 +5,23 @@
     (if (< size 0) start
         (build-grid-row (- size 1) init-cell (cons (init-cell size) start))))
 
-(defun init-grid (size init-cell)
-    (let h (- size 1))
-    (let w (- size 1))
+(defun init-grid (h w init-cell)
     (list
-        (- size 1)
+        (list h w)
         (build-grid-row h (lambda (x)
             (build-grid-row w (lambda (y)
                 (init-cell x y))
                     ())) ())))
 
-(defun grid-size  (grid) (car grid))
+(defun grid-shape (grid) (car grid))
 (defun grid-board (grid) (cadr grid))
 
 (defun wrap-around (n max)
     (if (< n 0) (+ max n) (if (> n max) (- n max) n )))
 
 (defun grid-cell-at (x y grid)
-    (let max (grid-size grid))
-    (nth (wrap-around y max) (nth (wrap-around x max) (grid-board grid))))
+    (let shape (grid-shape grid))
+    (nth (wrap-around y (cadr shape)) (nth (wrap-around x (car shape)) (grid-board grid))))
 
 
 ;; -----------------------------------------------------------------------------
@@ -73,7 +71,7 @@
 
 (defun tick (grid)
     (list
-        (grid-size grid)
+        (grid-shape grid)
         (map (lambda (row)
             (map (lambda (cell)
                 (apply-rules
@@ -83,23 +81,28 @@
             row))
         (grid-board grid))))
 
-(defun display-grid (grid gen)
-    (sys/io/print-ln "generation :" gen)
-    (map (lambda (r)
-        (sys/io/print-ln (map (lambda (c)
-            (if (eq? (car (cddr c)) :LIVE) :X :O)
-        ) r)))
-    (grid-board grid)))
-
 (defun run-n-generations (n grid gen)
     (if (== n 0) grid
         (do
             (display-grid grid gen)
+            (sleep 1)
             (run-n-generations (- n 1) (tick grid) (+ gen 1)))))
 
+;; -----------------------------------------------------------------------------
 
-(let grid (init-grid 10 init-grid-cell))
-(run-n-generations 10 grid 0)
+(defun display-grid (grid gen)
+    (sys/io/print-ln "generation :" gen)
+    (map (lambda (r)
+        (sys/io/print-ln (map (lambda (c)
+            (if (eq? (car (cddr c)) :LIVE) :💩 :◼️ )
+        ) r)))
+    (grid-board grid)))
+
+(defun main ()
+    (let grid (init-grid 20 60 init-grid-cell))
+    (run-n-generations 100 grid 0))
+
+(main)
 
 
 
