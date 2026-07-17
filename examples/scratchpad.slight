@@ -1,4 +1,6 @@
 
+;; -----------------------------------------------------------------------------
+
 (defun apply-rules (status n)
     (case status
         (:LIVE
@@ -11,73 +13,130 @@
 
 (defun cell (x y status neighbors)
     (let msg (recv))
-    (pprint msg)
+    '(pprint msg)
     (let tag  (car msg))
     (let args (cdr msg))
-    (case
+    (case tag
         (:INIT
-            (let new-neighbors args)
-            (sys/io/print-ln "(" x "," y ") " status)
+            (let new-neighbors (car args))
+            (sys/io/print-ln $$ " INIT (" x "," y ") " status " ... NEW" new-neighbors "")
             (cell x y status new-neighbors))
         (:QUERY
             (let reply-to (car args))
+            (sys/io/print-ln $$ " QUERY (" x "," y ") " status " ... " neighbors " ~> " reply-to)
             (send reply-to status)
             (cell x y status neighbors))
         (:TICK
+            (sys/io/print-ln $$ " TICK (" x "," y ") " status " ... " neighbors " ... " (car args))
             (let new-status (apply-rules
                 status
                 (reduce 0
-                    (lambda (acc n) (if (eq? n :LIVE) (+ acc 1) acc ))
-                    (map (lambda (n) (join n))
-                        (map (lambda (n) (send (list :QUERY $$)) n)
+                    (lambda (acc n)
+                        (sys/io/print-ln "... got something " n)
+                        (if (eq? n :LIVE) (+ acc 1) acc ))
+                    (map (lambda (n)
+                            (sys/io/print-ln "... does this block " $$)
+                            (let x (recv))
+                            (sys/io/print-ln "... does this unblock " $$ " ... " x)
+                            x
+                        )
+                        (map (lambda (n) (send n (list :QUERY $$)) n)
                             neighbors))))
-            (sys/io/print-ln "(" x "," y ") " new-status)
+            (sys/io/print-ln $$ " ^TICK (" x "," y ") NEW" new-status " ... " neighbors)
             (cell x y new-status neighbors)
         )
         (:EXIT
-            ()))))
+            (sys/io/print-ln $$ " EXIT")))))
 
 (defun make-cell (x y)
-    (fork (cell x y (if (== (rand 2) 0) :DEAD :LIVE) ())))
+    (list x y (fork (cell x y (if (== (rand 2) 0) :DEAD :LIVE) ()))))
 
-(defun make-row (x)
+;; -----------------------------------------------------------------------------
+
+(defun make-row (init-cell x)
     (list
-        (make-cell x 0)
-        (make-cell x 1)
-        (make-cell x 2)
-        (make-cell x 3)
-        (make-cell x 4)
-        (make-cell x 5)
-        (make-cell x 6)
-        (make-cell x 7)
-        (make-cell x 8)
-        (make-cell x 9)))
+        (init-cell x 0)
+        (init-cell x 1)
+        (init-cell x 2)
+        (init-cell x 3)
+        (init-cell x 4)
+        (init-cell x 5)
+        (init-cell x 6)
+        (init-cell x 7)
+        (init-cell x 8)
+        (init-cell x 9)))
 
-(defun make-grid ()
+(defun make-grid (init-cell)
     (list
-        (make-row 0)
-        (make-row 1)
-        (make-row 2)
-        (make-row 3)
-        (make-row 4)
-        (make-row 5)
-        (make-row 6)
-        (make-row 7)
-        (make-row 8)
-        (make-row 9)))
+        (make-row init-cell 0)
+        (make-row init-cell 1)
+        (make-row init-cell 2)
+        (make-row init-cell 3)
+        (make-row init-cell 4)
+        (make-row init-cell 5)
+        (make-row init-cell 6)
+        (make-row init-cell 7)
+        (make-row init-cell 8)
+        (make-row init-cell 9)))
 
+(defun wrap-around (n max)
+    (if (< n 0) (+ max n) (if (> n max) (- n max) n )))
+
+(defun get-cell-at (x y grid) (nth y (nth x grid)))
+
+(defun lookup-cells (h w grid coords)
+    (map (lambda (coord)
+        (get-cell-at (wrap-around (car  coord) h)
+                     (wrap-around (cadr coord) w) grid))) coords)
+
+(defun get-cell-neighbors (x y grid)
+    (map  (lambda (n) (car (cddr n)))
+        (grep (lambda (n) (not (nil? n)))
+            (map
+                (lambda (pair) (get-cell-at (+ x (car pair)) (+ y (cadr pair)) grid))
+                    (list '(-1 0) '(-1 1) '(0 1) '(1 1) '(1 0) '(1 -1) '(0 -1) '(-1 -1))))))
+
+(defun controller (h w grid action)
+    (case action
+        (:INIT
+            (map (lambda (row)
+                (map (lambda (cell)
+                    (send
+                        (car (cddr cell))
+                        (list :INIT (get-cell-neighbors (car cell) (cadr cell) grid)))
+                ) row)
+            ) grid))
+        (:TICK
+            (map (lambda (row)
+                (map (lambda (cell)
+                    (send
+                        (car (cddr cell))
+                        (list :TICK 1))
+                ) row)
+            ) grid))
+        (:EXIT
+            (map (lambda (row)
+                (map (lambda (cell)
+                    (send
+                        (car (cddr cell))
+                        (list :EXIT))
+                ) row)
+            ) grid)
+        )))
+
+;; -----------------------------------------------------------------------------
 
 ;; ...
 
-(defun get-neighbors (x y)
-    (map
-        (lambda (pair)
-            (list (+ x (car pair)) (+ y (cadr pair))))
-        (list '(-1 0) '(-1 1) '(0 1) '(1 1) '(1 0) '(1 -1) '(0 -1) '(-1 -1))))
+(let h 9)
+(let w 9)
+(let grid (make-grid make-cell))
 
-;; ...
+(controller h w grid :INIT)
+(controller h w grid :TICK)
+(controller h w grid :EXIT)
 
-(pprint (get-neighbors 2 2))
+
 
 
 

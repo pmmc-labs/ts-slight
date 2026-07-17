@@ -14,9 +14,10 @@
         (+ 1 (length (tail lst)))))
 
 (defun nth (i lst)
-    (if (== i 0)
-        (if (nil? lst) () (head lst))
-        (nth (- i 1) (tail lst))))
+    (if (nil? lst) ()
+        (if (== i 0)
+            (head lst)
+            (nth (- i 1) (tail lst)))))
 
 (defun map (f lst)
     (if (nil? lst) ()
