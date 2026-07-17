@@ -31,7 +31,7 @@
 ;; -----------------------------------------------------------------------------
 
 (defun init-grid-cell (x y)
-    (list x y))
+    (list x y (rand 1)))
 
 (defun all-directions () (list :N :NE :E :SE :S :SW :W :NW))
 
