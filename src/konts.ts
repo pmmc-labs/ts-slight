@@ -43,28 +43,6 @@ export type Kontinue =
     | Cond
     | ScopeExit
 
-export function pprintKont (kont : Kontinue) : string {
-    let kontStr  = kont.type.padStart(11, " ");
-    switch (kont.type) {
-    case 'EVAL_EXPR'  : kontStr += ` =: ${pprint(kont.expr)}`;  break;
-    case 'EVAL_HEAD'  : kontStr += ` =: ${pprint(kont.args)}`;  break;
-    case 'APPLY'      : kontStr += ` =: ${pprint(kont.call)}`;  break;
-    case 'RETURN'     : kontStr += ` =: ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : kontStr += ` =: ${pprint(kont.name)}`;  break;
-    case 'EVAL_ARGS'  : kontStr += ` =: ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
-    case 'DROP'       : break;
-    case 'COND'       : break;
-    case 'SCOPE_EXIT' : break;
-    case 'SEND'       : break;
-    case 'SYSCALL'    : break;
-    case 'YIELD'      : break;
-    case 'BLOCK'      : kontStr += ` =: ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
-    case 'HALT'       : kontStr += ` =: ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
-    case 'ERR'        : kontStr += `${pprint(kont.error)}`; break;
-    }
-    return kontStr;
-}
-
 export function ThrowError (error : ERROR, kont : Kontinue)  : Err {
     return { type : 'ERR', error, env : kont.env, kont }
 }

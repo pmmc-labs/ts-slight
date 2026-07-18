@@ -1,4 +1,4 @@
-import { DEBUG } from './debug.ts';
+import { DEBUG, LOG, TRACE } from './debug.ts';
 import {
     type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
@@ -8,7 +8,7 @@ import {
 } from './terms.ts';
 import {
     type Kontinue, type Chan, type WaitFor, type Process,
-    pprintKont, ThrowError, RaiseError,
+    ThrowError, RaiseError,
     EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
     Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
 } from './konts.ts';
@@ -80,7 +80,7 @@ export class Strand {
     }
 
     private awaitKey (key : string, proc : Process) : void {
-        if (DEBUG) console.log(`#### : Blocking ${pprint(proc.pid)} on ${key}`);
+        if (DEBUG) LOG(`#### : Blocking ${pprint(proc.pid)} on ${key}`);
         let waiters = this.blocked.get(key) ?? [];
         this.blocked.set(key, [ ...waiters, proc ]);
     }
@@ -88,13 +88,13 @@ export class Strand {
     private resumeWaiter (proc : Process, resumed : TERM) : void {
         if (proc.kont.type == 'HALT' || proc.kont.type == 'ERR')
             throw new Error(`Cannot resume a finished process`);
-        if (DEBUG) console.log(`<<<< : Resuming ${pprint(proc.pid)}`);
+        if (DEBUG) LOG(`<<<< : Resuming ${pprint(proc.pid)}`);
         proc.kont = Return( resumed, proc.kont.kont.env, proc.kont.kont );
         this.enqueueProcess(proc);
     }
 
     private faultWaiter (proc : Process, error : ERROR) : void {
-        if (DEBUG) console.log(`<<<< : Faulting ${pprint(proc.pid)}`);
+        if (DEBUG) LOG(`<<<< : Faulting ${pprint(proc.pid)}`);
         proc.kont = ThrowError( error, proc.kont );
         this.enqueueProcess(proc);
     }
@@ -121,7 +121,7 @@ export class Strand {
         let target = this.procs.get( target_pid.ident );
         if (target == undefined || this.halted.has( target_pid.ident )) {
             // fire-and-forget: sending to a dead or unknown pid succeeds silently
-            if (DEBUG) console.log(`#### : Dropping ${pprint(msg)} sent to dead ${pprint(target_pid)}`);
+            if (DEBUG) LOG(`#### : Dropping ${pprint(msg)} sent to dead ${pprint(target_pid)}`);
             return;
         }
         target.mailbox.queue.push(msg);
@@ -157,7 +157,7 @@ export class Strand {
 
     private yieldProcess (proc : Process) : void {
         if (proc.kont.type != 'YIELD') throw new Error(`You can only yield on a YIELD!`);
-        if (DEBUG) console.log(`#### : Yielding ${pprint(proc.pid)}`);
+        if (DEBUG) LOG(`#### : Yielding ${pprint(proc.pid)}`);
         proc.kont = proc.kont.kont;
         this.enqueueProcess(proc);
     }
@@ -177,7 +177,7 @@ export class Strand {
     }
 
     private haltProcess (proc : Process) : void {
-        if (DEBUG) console.log(`#### : Halting ${pprint(proc.pid)}`);
+        if (DEBUG) LOG(`#### : Halting ${pprint(proc.pid)}`);
         let proc_result : ProcessResult;
         if (proc.kont.type == 'HALT') {
             if (proc.kont.result === undefined) throw new Error(`Expected result in HALT!`);
@@ -245,7 +245,7 @@ export class Strand {
             break;
         }
         default:
-            if (DEBUG) console.log(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
+            if (DEBUG) LOG(`!!!! : Quota exhausted for ${ pprint(proc.pid) }, refilling`);
             this.enqueueProcess(proc);
         }
     }
@@ -291,7 +291,7 @@ export class Strand {
             if (this.runqueue.hasWork()) {
                 let proc = this.runqueue.pop()!;
                 this.DISPATCH_SEQ++;
-                if (DEBUG) console.log(`>>>> : Switching to ${ pprint(proc.pid) }`);
+                if (DEBUG) LOG(`>>>> : Switching to ${ pprint(proc.pid) }`);
                 this.step(proc, this.DEFAULT_QUOTA);
                 this.park(proc);
                 if (this.inflight > 0 && --hop_every <= 0) {
@@ -339,13 +339,7 @@ export class Strand {
     kontinue (proc : Process, returned : TERM | undefined = undefined) : Kontinue {
         proc.steps++;
         let kont = proc.kont;
-        if (DEBUG) {
-            console.log([
-                proc.pid.ident.toString().padStart(4, '0'),
-                proc.steps.toString().padStart(6, '0'),
-                pprintKont(proc.kont),
-            ].join(' | '));
-        }
+        if (DEBUG) TRACE(proc);
         switch (kont.type) {
         case 'EVAL_EXPR':
             switch (true) {
