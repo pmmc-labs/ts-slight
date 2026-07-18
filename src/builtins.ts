@@ -8,6 +8,22 @@ import {
 
 // -----------------------------------------------------------------------------
 
+
+export function liftNulOp (name : string, f : () => TERM) : Builtin {
+    return {
+        type   : 'BIF',
+        params : NIL,
+        name   : name,
+        body   : () : TERM => {
+            try {
+                return f();
+            } catch (e) {
+                return raise(`RUNTIME ERROR!! in ${name} - ${String(e)}`);
+            }
+        }
+    }
+}
+
 export function liftUnOp (name : string, f : (n : TERM) => TERM) : Builtin {
     return {
         type   : 'BIF',
@@ -20,7 +36,7 @@ export function liftUnOp (name : string, f : (n : TERM) => TERM) : Builtin {
                 let n = car(args);
                 return f(n);
             } catch (e) {
-                return raise(`RUNTIME ERROR!! - ${String(e)}`);
+                return raise(`RUNTIME ERROR!! in ${name} - ${String(e)}`);
             }
         }
     }
@@ -191,6 +207,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     // utilities ...
     env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
 
+    // immediate mode GUI :P
     env = bind( sym('poke'), liftBinOp('poke', (char, at) => {
         let c = (char as Str).value;
         let [ x, y ] = uncons(at as Cons).map((n) => (n as Num).value);
@@ -198,6 +215,18 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
         return NIL;
     }), env );
 
+    env = bind( sym('ansi/hide-cursor'), liftNulOp('ansi/hide-cursor', () => {
+        process.stdout.write("\x1b[?25l");
+        process.on('SIGINT', () => { // XXX - kinda gross, but works for now
+            process.stdout.write("\x1b[?25h");
+            process.exit();
+        });
+        return NIL;
+    }), env );
+    env = bind( sym('ansi/show-cursor'), liftNulOp('ansi/show-cursor', () => {
+        process.stdout.write("\x1b[?25h");
+        return NIL;
+    }), env );
 
     // NOTE: this is just a place to park this work now
     // until the I/O system evolves
