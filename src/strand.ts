@@ -9,7 +9,7 @@ import {
 import {
     type Kontinue, type Chan, type WaitFor, type Process,
     ThrowError, RaiseError,
-    EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
+    Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
     Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
@@ -200,9 +200,9 @@ export class Strand {
 
         let kont : Kontinue = Halt( local, NIL );
         if (exprs.length > 0) {
-            kont = EvalExpr( exprs.pop()!, local, kont );
+            kont = Eval( exprs.pop()!, local, kont );
             while (exprs.length > 0) {
-                kont = EvalExpr( exprs.pop()!, local, Drop( local, kont ) );
+                kont = Eval( exprs.pop()!, local, Drop( local, kont ) );
             }
         }
 
@@ -341,6 +341,8 @@ export class Strand {
         let kont = proc.kont;
         if (DEBUG) TRACE(proc);
         switch (kont.type) {
+        case 'EVAL':
+            return EvalExpr( kont.expr, kont.env, kont.kont );
         case 'EVAL_EXPR':
             switch (true) {
             case isCons(kont.expr):
@@ -378,9 +380,9 @@ export class Strand {
                         return EvalExpr( or_cond, kont.env, Cond( undefined, or_if_false, kont.env, kont.kont ) )
                     case 'do' :
                         let exprs = uncons(tail);
-                        let next = EvalExpr( exprs.pop()!, kont.env, kont.kont );
+                        let next = Eval( exprs.pop()!, kont.env, kont.kont );
                         while (exprs.length > 0) {
-                            next = EvalExpr( exprs.pop()!, kont.env, Drop( kont.env, next ) )
+                            next = Eval( exprs.pop()!, kont.env, Drop( kont.env, next ) )
                         }
                         return next;
                     case 'lambda' : {
@@ -466,7 +468,7 @@ export class Strand {
             case isLambda(kont.call):
                 let local = bindParams( kont.call.params, args, kont.call.env );
                 if (isError(local)) return ThrowError(local, kont);
-                return EvalExpr( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
+                return Eval( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
             case isBuiltin(kont.call):
                 return Return( kont.call.body(args), kont.env, kont.kont )
             default:

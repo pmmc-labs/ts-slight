@@ -9,12 +9,13 @@ export type Kontinuation = { env : Env, kont : Kontinue }
 
 export type MaybeTERM = TERM | undefined
 
-export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                     } & Kontinuation
-export type EvalHead  = { type : 'EVAL_HEAD', args : LIST                     } & Kontinuation
-export type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[]      } & Kontinuation
-export type Apply     = { type : 'APPLY',     call : CALLABLE                 } & Kontinuation
-export type Return    = { type : 'RETURN',    value : TERM                    } & Kontinuation
-export type Define    = { type : 'DEFINE',    name : Sym                      } & Kontinuation
+export type Eval      = { type : 'EVAL',      expr : TERM                } & Kontinuation
+export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                } & Kontinuation
+export type EvalHead  = { type : 'EVAL_HEAD', args : LIST                } & Kontinuation
+export type EvalArgs  = { type : 'EVAL_ARGS', args : LIST, done : TERM[] } & Kontinuation
+export type Apply     = { type : 'APPLY',     call : CALLABLE            } & Kontinuation
+export type Return    = { type : 'RETURN',    value : TERM               } & Kontinuation
+export type Define    = { type : 'DEFINE',    name : Sym                 } & Kontinuation
 
 export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
 export type Send      = { type : 'SEND'       } & Kontinuation
@@ -27,6 +28,7 @@ export type Yield     = { type : 'YIELD' } & Kontinuation
 export type Halt      = { type : 'HALT', result : MaybeTERM, env : Env }
 
 export type Kontinue =
+    | Eval
     | EvalExpr
     | EvalHead
     | EvalArgs
@@ -49,6 +51,10 @@ export function ThrowError (error : ERROR, kont : Kontinue)  : Err {
 
 export function RaiseError   (error : string, kont : Kontinue) : Err {
     return ThrowError( raise(error), kont )
+}
+
+export function Eval (expr : TERM, env : Env, kont : Kontinue) : Eval {
+    return { type : 'EVAL', expr, env, kont }
 }
 
 export function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {

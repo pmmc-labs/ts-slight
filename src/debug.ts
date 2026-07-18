@@ -10,9 +10,10 @@ export function LOG (...msgs : any[]) : void {
 export function TRACE (proc : Process) : void {
     switch (proc.kont.type) {
     case 'EVAL_HEAD'  :
-    case 'EVAL_ARGS'  : //return;
+    case 'EVAL_ARGS'  :
+    case 'EVAL_EXPR'  : return;
+    case 'EVAL'       :
     case 'APPLY'      :
-    case 'EVAL_EXPR'  :
     case 'RETURN'     :
     case 'DEFINE'     :
     case 'DROP'       :
@@ -48,6 +49,7 @@ export function TRACE (proc : Process) : void {
 export function pprintKont (kont : Kontinue, depth : number) : string {
     let kontStr = `${kont.type.padStart(11, ' ')} | ${depth.toString().padStart(3, ' ')} | ${(depth > 0 ? "-".repeat(depth) : "^")}`;
     switch (kont.type) {
+    case 'EVAL'       : kontStr += ` ${pprint(kont.expr)}`;  break;
     case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`;  break;
     case 'EVAL_HEAD'  : kontStr += ` ${pprint(kont.args)}`;  break;
     case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`;  break;
