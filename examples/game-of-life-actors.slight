@@ -130,14 +130,14 @@
 
 ;; ...
 
-(let h 40)
-(let w 40)
+(let h 25)
+(let w 25)
 (let grid (make-grid h w make-cell))
 
 (yield (controller h w grid :INIT))
-(do-times 0 100 (lambda (i)
+(do-times 0 1000 (lambda (i)
     (yield (controller h w grid :TICK))
-    (sleep 250)
+    (sleep 100)
 ))
 (yield (controller h w grid :EXIT))
 
