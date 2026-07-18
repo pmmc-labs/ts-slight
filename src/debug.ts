@@ -10,7 +10,7 @@ export function LOG (...msgs : any[]) : void {
 export function TRACE (proc : Process) : void {
     switch (proc.kont.type) {
     case 'EVAL_HEAD'  :
-    case 'EVAL_ARGS'  :return;
+    case 'EVAL_ARGS'  : //return;
     case 'APPLY'      :
     case 'EVAL_EXPR'  :
     case 'RETURN'     :
@@ -53,7 +53,7 @@ export function pprintKont (kont : Kontinue, depth : number) : string {
     case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`;  break;
     case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
     case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`;  break;
-    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> ${kont.done.map(pprint).join(' ')}`; break;
+    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> [${kont.done.map(pprint).join(' ')}]`; break;
     case 'BLOCK'      : kontStr += ` ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
     case 'HALT'       : kontStr += ` ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += ` ${pprint(kont.error)}`; break;
