@@ -46,7 +46,7 @@ export function parse (source : string) : TERM[] {
             let frame = stack.pop();
             if (frame == undefined) {
                 let last = done.at(-1);
-                throw new Error(`PARSE ERROR: unexpected ')' ... ${last == undefined ? '??' : pprint(last)} ? <--`);
+                throw new Error(`PARSE ERROR: unexpected ')' ... ${last == undefined ? '??' : pprint(last)}) <--`);
             }
             if (isQuoteFrame(frame)) {
                 throw new Error(`PARSE ERROR: dangling ' before ')' ... ${stack.flat().map(pprint).join(' ')}') <--`);
@@ -86,7 +86,10 @@ export function parse (source : string) : TERM[] {
     }
 
     if (stack.length > 0) {
-        if (isQuoteFrame(stack.at(-1))) throw new Error(`PARSE ERROR: ' at end of input`);
+        if (isQuoteFrame(stack.at(-1))) {
+            let last = done.at(-1);
+            throw new Error(`PARSE ERROR: ' at end of input ... ${last == undefined ? '??' : pprint(last)} ' <--`);
+        }
         throw new Error(`PARSE ERROR: unclosed '(' ... (${stack.flat().map(pprint).join(' ')} ? <--`);
     }
 
