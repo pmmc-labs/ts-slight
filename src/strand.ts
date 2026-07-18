@@ -1,4 +1,4 @@
-import { DEBUG, LOG, TRACE } from './debug.ts';
+import { DEBUG, LOG, TRACE, dumpKont } from './debug.ts';
 import {
     type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
@@ -256,7 +256,7 @@ export class Strand {
         procs.forEach((p) => {
             let on_what = '??';
             if (p.kont.type != 'HALT') {
-                on_what = p.kont.kont.type;
+                on_what = dumpKont(p.kont.kont);
             }
             p.kont = RaiseError(`DEADLOCKED! ${on_what}`, p.kont);
             this.enqueueProcess(p);

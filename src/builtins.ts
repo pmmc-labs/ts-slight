@@ -1,6 +1,6 @@
 
 import {
-    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR,
+    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR, type Cons,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
     TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
@@ -33,14 +33,14 @@ export function liftBinOp (name : string, f : (n : TERM, m : TERM) => TERM) : Bu
         name   : name,
         body   : (args : LIST) : TERM => {
             try {
-                if (isNil(args))        return raise(`Expected 2 arguments, not 0`);
-                if (isNil(cdr(args)))   return raise(`Expected 2 arguments, not 1`);
-                if (!isNil(cddr(args))) return raise(`Expected 2 arguments, not >2`);
+                if (isNil(args))        return raise(`${name} expected 2 arguments, not 0`);
+                if (isNil(cdr(args)))   return raise(`${name} expected 2 arguments, not 1`);
+                if (!isNil(cddr(args))) return raise(`${name} expected 2 arguments, not >2`);
                 let n = car(args);
                 let m = cadr(args);
                 return f(n, m);
             } catch (e) {
-                return raise(`RUNTIME ERROR!! - ${String(e)}`);
+                return raise(`RUNTIME ERROR!! in ${name} - ${String(e)}`);
             }
         }
     }
@@ -55,7 +55,7 @@ export function liftListOp (name : string, f : (n : LIST) => TERM) : Builtin {
             try {
                 return f(args);
             } catch (e) {
-                return raise(`RUNTIME ERROR!! - ${String(e)}`);
+                return raise(`RUNTIME ERROR!! in ${name} - ${String(e)}`);
             }
         }
     }
@@ -66,7 +66,7 @@ export function liftNumBinOp (name : string, f : (n : number, m : number) => num
         if (isNum(n) && isNum(m)) {
             return num(f( n.value, m.value ));
         } else {
-            return raise(`TYPE-ERROR! - expected Nums got (${n.type} ${m.type})`);
+            return raise(`TYPE-ERROR! - ${name} expected Nums got (${n.type} ${m.type})`);
         }
     })
 }
@@ -76,7 +76,7 @@ export function liftStrBinOp (name : string, f : (n : string, m : string) => str
         if (isStr(n) && isStr(m)) {
             return str(f( n.value, m.value ));
         } else {
-            return raise(`TYPE-ERROR! - expected Strs got (${n.type} ${m.type})`);
+            return raise(`TYPE-ERROR! - ${name} expected Strs got (${n.type} ${m.type})`);
         }
     })
 }
@@ -88,7 +88,7 @@ export function liftLiteralBoolOp (name : string, f : (n : JSLiteral, m : JSLite
         if (isLiteral(n) && isLiteral(m)) {
             return f( n.value, m.value ) ? TRUE : FALSE;
         } else {
-            return raise(`TYPE-ERROR! - expected Literals (Str, Num or Bool) got (${n.type} ${m.type})`);
+            return raise(`TYPE-ERROR! - ${name} expected Literals (Str, Num or Bool) got (${n.type} ${m.type})`);
         }
     })
 }
@@ -190,6 +190,14 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     // utilities ...
     env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
+
+    env = bind( sym('poke'), liftBinOp('poke', (char, at) => {
+        let c = (char as Str).value;
+        let [ x, y ] = uncons(at as Cons).map((n) => (n as Num).value);
+        process.stdout.write(`\x1b[${x};${y}H${c}`)
+        return NIL;
+    }), env );
+
 
     // NOTE: this is just a place to park this work now
     // until the I/O system evolves

@@ -46,6 +46,27 @@ export function TRACE (proc : Process) : void {
     );
 }
 
+export function dumpKont (kont : Kontinue) : string {
+    switch (kont.type) {
+    case 'EVAL'       : return `${kont.type} : ${pprint(kont.expr)}`;
+    case 'EVAL_EXPR'  : return `${kont.type} : ${pprint(kont.expr)}`;
+    case 'EVAL_HEAD'  : return `${kont.type} : ${pprint(kont.args)}`;
+    case 'APPLY'      : return `${kont.type} : ${pprint(kont.call)}`;
+    case 'RETURN'     : return `${kont.type} : ${pprint(kont.value)}`;
+    case 'DEFINE'     : return `${kont.type} : ${pprint(kont.name)}`;
+    case 'EVAL_ARGS'  : return `${kont.type} : ${pprint(kont.args)} -> [${kont.done.map(pprint).join(' ')}]`;
+    case 'BLOCK'      : return `${kont.type} : ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`;
+    case 'HALT'       : return `${kont.type} : ${kont.result == undefined ? '' : pprint(kont.result)}`;
+    case 'ERR'        : return `${kont.type} : ${pprint(kont.error)}`;
+    case 'DROP'       : return `${kont.type}`;
+    case 'COND'       : return `${kont.type}`;
+    case 'SCOPE_EXIT' : return `${kont.type}`;
+    case 'SEND'       : return `${kont.type}`;
+    case 'SYSCALL'    : return `${kont.type}`;
+    case 'YIELD'      : return `${kont.type}`;
+    }
+}
+
 export function pprintKont (kont : Kontinue, depth : number) : string {
     let kontStr = `${kont.type.padStart(11, ' ')} | ${depth.toString().padStart(3, ' ')} | ${(depth > 0 ? "-".repeat(depth) : "^")}`;
     switch (kont.type) {

@@ -1,11 +1,7 @@
 
-(defun fact (n)
-    (if (== n 0) 1
-        (* n (fact (- n 1)))))
 
-(defun fib (n)
-    (if (< n 2) n
-        (+ (fib (- n 1)) (fib (- n 2)))))
+(do-times 0 10 (lambda (i)
+    (poke "💩" (list i i))
+))
 
-(fact 27)
 
