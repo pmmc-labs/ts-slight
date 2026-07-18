@@ -254,7 +254,11 @@ export class Strand {
         let procs = [ ...this.blocked.values() ].flat();
         this.blocked.clear();
         procs.forEach((p) => {
-            p.kont = RaiseError('DEADLOCKED!', p.kont);
+            let on_what = '??';
+            if (p.kont.type != 'HALT') {
+                on_what = p.kont.kont.type;
+            }
+            p.kont = RaiseError(`DEADLOCKED! ${on_what}`, p.kont);
             this.enqueueProcess(p);
         });
     }
