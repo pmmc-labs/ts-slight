@@ -51,7 +51,6 @@ export type ProcessResult =
 
 export class Strand {
     public runqueue : RunQueue = new RunQueue();
-    //public halted  : Map<number,Process>   = new Map<number,Process>();
     public halted  : Map<number,ProcessResult> = new Map<number,ProcessResult>();
     public blocked : Map<string,Process[]> = new Map<string,Process[]>();
     public procs   : Map<number,Process>   = new Map<number,Process>();
@@ -263,10 +262,9 @@ export class Strand {
         });
     }
 
-    async run (exprs : TERM[], env : MapEnv) : Promise<ProcessResult[]> {
-        env = newMapEnv( env ); // for the (defun)s
-
-        let to_run = [];
+    private spawnInitProcess (exprs: TERM[], env : MapEnv) : Pid {
+        let root_env = newMapEnv( env ); // for the (defun)s
+        let to_run   = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
                 let head = car(expr);
@@ -279,7 +277,7 @@ export class Strand {
                     if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
                     let body = body_exprs.length == 1 ? body_exprs[0] : list(sym('do'), ...body_exprs);
                     if (body === undefined) throw new Error(`defun <name> <params> ... really shouldnt happen, just typescript being annoying`);
-                    env = bind( name, lambda( params, body, env ), env );
+                    root_env = bind( name, lambda( params, body, root_env ), root_env );
                 } else {
                     to_run.push(expr);
                 }
@@ -287,8 +285,11 @@ export class Strand {
                 to_run.push(expr);
             }
         }
+        return this.spawnProcess( to_run, root_env, undefined ); // no parent
+    }
 
-        let init_pid = this.spawnProcess( to_run, env, undefined ); // no parent
+    async run (exprs : TERM[], env : MapEnv) : Promise<ProcessResult[]> {
+        let init_pid = this.spawnInitProcess( exprs, env );
 
         let hop_every = 25;
         while (true) {
@@ -310,7 +311,6 @@ export class Strand {
                 break;
             }
         }
-
         return [ ...this.halted.values() ];
     }
 
