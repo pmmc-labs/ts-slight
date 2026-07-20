@@ -57,10 +57,10 @@
             (let new-status (apply-rules status (car args)))
             ;(sys/io/print-ln $$ " <@> CALC " status " --> " new-status " in " generation)
             (if (eq? new-status :LIVE)
-                ;(poke "*" (list (+ x 5) (+ (* (inc y) 2) 1)))
-                ;(poke " " (list (+ x 5) (+ (* (inc y) 2) 1))))
-                (poke "🍄" (list (+ x 5) (+ (* (inc y) 2) 5)))
-                (poke " "  (list (+ x 5) (+ (* (inc y) 2) 5))))
+                ;(poke "*" (list (+ x 8) (+ (* (inc y) 2) 8)))
+                ;(poke " " (list (+ x 8) (+ (* (inc y) 2) 8))))
+                (poke "🔴" (list (+ x 8) (+ (* (inc y) 2) 8)))
+                (poke "  " (list (+ x 8) (+ (* (inc y) 2) 8))))
             ;(time-it/end (concat "tick" $$))
             (yield (cell x y new-status generation neighbors))
         )
@@ -69,7 +69,8 @@
             )))
 
 (defun make-cell (x y)
-    (list x y (fork (cell x y (if (== (rand 2) 0) :LIVE :DEAD) 0 ()))))
+    (list x y (fork (cell x y
+        (if (>= (rand 4) 2) :LIVE :DEAD) 0 ()))))
 
 ;; -----------------------------------------------------------------------------
 
@@ -138,7 +139,7 @@
 (ansi/hide-cursor)
 (do-times 0 1000 (lambda (i)
     (yield (controller h w grid :TICK))
-    (sleep 150)
+    (sleep 300)
 ))
 (yield (controller h w grid :EXIT))
 (yield (ansi/show-cursor))

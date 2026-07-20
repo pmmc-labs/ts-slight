@@ -4,7 +4,7 @@ import {
     initalizeEnv,
     liftListOp,
 }   from './builtins.ts';
-import { Strand, ProcessResult } from './strand.ts';
+import { Strand, Process, ProcessResult } from './strand.ts';
 import {
     type Sym, type Str,
     newMapEnv,
@@ -13,8 +13,6 @@ import {
     bind, pprint, uncons, raise,
     isSym,
 } from './terms.ts';
-
-import type { Process } from './konts.ts';
 
 export * from './debug.ts';
 export * from './terms.ts';

@@ -1,4 +1,5 @@
-import { type Process, type Kontinue } from './konts.ts';
+import { type Process  } from './strand.ts';
+import { type Kontinue } from './konts.ts';
 import { pprint } from './terms.ts';
 
 export const DEBUG : boolean = (globalThis as any).process?.env?.["DEBUG"] == '1';
@@ -64,6 +65,8 @@ export function dumpKont (kont : Kontinue) : string {
     case 'SEND'       : return `${kont.type}`;
     case 'SYSCALL'    : return `${kont.type}`;
     case 'YIELD'      : return `${kont.type}`;
+    default:
+        return "WTF!";
     }
 }
 

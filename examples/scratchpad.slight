@@ -1,7 +1,2 @@
 
 
-(do-times 0 10 (lambda (i)
-    (poke "💩" (list i i))
-))
-
-

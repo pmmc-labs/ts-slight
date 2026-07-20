@@ -9,6 +9,11 @@ export type Kontinuation = { env : Env, kont : Kontinue }
 
 export type MaybeTERM = TERM | undefined
 
+export type WaitFor =
+    | { target : 'JOIN',    pid : Pid }
+    | { target : 'RECV' }
+    | { target : 'SYSCALL', name : string, args : TERM[] }
+
 export type Eval      = { type : 'EVAL',      expr : TERM                } & Kontinuation
 export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                } & Kontinuation
 export type EvalHead  = { type : 'EVAL_HEAD', args : LIST                } & Kontinuation
@@ -114,13 +119,3 @@ export function ScopeExit (env : Env, kont : Kontinue) : ScopeExit {
     return { type : 'SCOPE_EXIT', env, kont }
 }
 
-// -----------------------------------------------------------------------------
-
-export type Chan = { id : number, queue : TERM[] }
-
-export type WaitFor =
-    | { target : 'JOIN',    pid : Pid }
-    | { target : 'RECV' }
-    | { target : 'SYSCALL', name : string, args : TERM[] }
-
-export type Process = { pid : Pid, kont : Kontinue, steps : number, mailbox : Chan }

@@ -24,6 +24,13 @@ function expand_expr (expr : TERM) : TERM {
                 return list( sym('if'), expand_expr(when_cond), expand_expr(when_if_true), NIL );
             case 'case' :
                 let topic = tail.first;
+                if (isCons(topic)
+                && isCons(topic.first)
+                && isCons((topic.first).first)
+                && isSym(((topic.first).first).first)
+                && (((topic.first).first).first).ident == 'quote') {
+                    throw new Error(`You forgot the topic on the (case) expression`)
+                }
                 let kases = uncons(tail.rest);
                 let compiled_kases : LIST = NIL;
                 while (kases.length > 0) {

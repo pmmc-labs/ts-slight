@@ -211,7 +211,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('poke'), liftBinOp('poke', (char, at) => {
         let c = (char as Str).value;
         let [ x, y ] = uncons(at as Cons).map((n) => (n as Num).value);
-        process.stdout.write(`\x1b[${x};${y}H${c}`)
+        process.stdout.write(`\x1b[s\x1b[${x};${y}H${c}\x1b[u`)
         return NIL;
     }), env );
 

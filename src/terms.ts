@@ -18,6 +18,7 @@ export type RibNode  = { name : string, value : TERM, next : RibNode | undefined
 export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined }
 export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
 export type Env      = MapEnv | RibEnv
+
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 

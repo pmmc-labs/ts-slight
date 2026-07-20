@@ -7,7 +7,7 @@ import {
     newPid, newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {
-    type Kontinue, type Chan, type WaitFor, type Process,
+    type Kontinue, type WaitFor,
     ThrowError, RaiseError,
     Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
     Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
@@ -43,6 +43,15 @@ class RunQueue {
         }
         return this.back.pop()!;
     }
+}
+
+export type Chan = { id : number, queue : TERM[] }
+
+export type Process = {
+    pid     : Pid,
+    kont    : Kontinue,
+    steps   : number,
+    mailbox : Chan
 }
 
 export type ProcessResult =
@@ -455,7 +464,7 @@ export class Strand {
             }
         case 'EVAL_HEAD':
             if (returned == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`, kont);
-            if (!isCallable(returned)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got something else!`, kont);
+            if (!isCallable(returned)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got ${pprint(returned)}`, kont);
             return EvalArgs(kont.args, [], kont.env, Apply( returned, kont.env, kont.kont ))
         case 'EVAL_ARGS':
             let done = [ ...kont.done ];
@@ -466,7 +475,7 @@ export class Strand {
             return EvalExpr( car(kont.args), kont.env, EvalArgs( cdr(kont.args), done, kont.env, kont.kont ))
         case 'APPLY':
             if (returned == undefined) return RaiseError(`Expected args returned to APPLY, got undefined`, kont);
-            if (!isList(returned))     return RaiseError(`Expected args LIST returned to APPLY, got something else`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to APPLY, got ${pprint(returned)}`, kont);
             let args = returned;
             switch (true) {
             case isLambda(kont.call):
@@ -492,18 +501,18 @@ export class Strand {
             return kont;
         case 'SEND':
             if (returned == undefined) return RaiseError(`Expected args returned to SEND, got undefined`, kont);
-            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SEND, got something else`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SEND, got ${pprint(returned)}`, kont);
             let send_args = uncons(returned);
-            if (send_args.length != 2) return RaiseError(`send expects (send <pid> <msg>), got ${send_args.length} args`, kont);
+            if (send_args.length != 2) return RaiseError(`send expects (send <pid> <msg>), got ${send_args.length} args -> ${send_args.map(pprint).join(', ')}`, kont);
             let [ send_to, send_msg ] = send_args;
             if (send_to == undefined) return RaiseError(`Expected PID arg for SEND, got undefined`, kont);
-            if (!isPid(send_to)) return RaiseError(`send expects a PID, got ${send_to.type}`, kont);
             if (send_msg == undefined) return RaiseError(`Expected Msg arg for SEND, got undefined`, kont);
+            if (!isPid(send_to)) return RaiseError(`send expects a PID, got ${send_to.type} -> ${pprint(send_to)} `, kont);
             this.sendMessage( send_to, send_msg );
             return Return( send_msg, kont.env, kont.kont );
         case 'SYSCALL':
             if (returned == undefined) return RaiseError(`Expected args returned to SYSCALL, got undefined`, kont);
-            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SYSCALL, got something else`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to SYSCALL, got ${pprint(returned)}`, kont);
             let sys_args = uncons(returned);
             let sys_name = sys_args.shift();
             if (sys_name == undefined) return RaiseError(`syscall expects (syscall '<name> args ...)`, kont);
