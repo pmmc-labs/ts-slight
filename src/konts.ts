@@ -1,5 +1,5 @@
 import {
-    type TERM, type LIST, type CALLABLE, type Env, type Sym, type Pid, type ERROR,
+    type TERM, type LIST, type CALLABLE, type Env, type Sym, type Pid, type ERROR, type Cons,
     raise, pprint,
 } from './terms.ts';
 
@@ -22,6 +22,9 @@ export type Apply     = { type : 'APPLY',     call : CALLABLE            } & Kon
 export type Return    = { type : 'RETURN',    value : TERM               } & Kontinuation
 export type Define    = { type : 'DEFINE',    name : Sym                 } & Kontinuation
 
+export type Fold      = { type : 'FOLD' } & Kontinuation
+export type FoldLeft  = { type : 'FOLD/LEFT', acc : TERM, call : CALLABLE, seq : LIST } & Kontinuation
+
 export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
 export type Send      = { type : 'SEND'       } & Kontinuation
 export type Syscall   = { type : 'SYSCALL'    } & Kontinuation
@@ -38,6 +41,8 @@ export type Kontinue =
     | EvalHead
     | EvalArgs
     | Apply
+    | Fold
+    | FoldLeft
     | Drop
     | Return
     | Block
@@ -76,6 +81,14 @@ export function EvalArgs (args : LIST, done : TERM[], env : Env, kont : Kontinue
 
 export function Apply (call : CALLABLE, env : Env, kont : Kontinue) : Apply {
     return { type : 'APPLY', call, env, kont }
+}
+
+export function Fold (env : Env, kont : Kontinue) : Fold {
+    return { type  : 'FOLD', env, kont }
+}
+
+export function FoldLeft (acc : TERM, call : CALLABLE, seq : LIST, env : Env, kont : Kontinue) : FoldLeft {
+    return { type  : 'FOLD/LEFT', acc, call, seq, env, kont }
 }
 
 export function Return (value : TERM, env : Env, kont : Kontinue) : Return {

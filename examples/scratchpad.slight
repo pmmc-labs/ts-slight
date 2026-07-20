@@ -1,2 +1,24 @@
 
 
+
+(let lst-of-100 (list
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+    0 0 0 0 0 0 0 0 0 0
+))
+
+(time-it "list - map")
+(let result (map (lambda (x) (inc x)) lst-of-100))
+(time-it/end "list - map")
+
+(time-it "list - sum")
+(pprint (sum result))
+(time-it/end "list - sum")
+

@@ -92,12 +92,14 @@
     (if (== n 0) grid
         (do
             (display-grid grid gen)
-            (run-n-generations (- n 1) (tick grid) (+ gen 1)))))
+            (time-it (concat "generation" gen))
+            (let new-grid (tick grid))
+            (time-it/end (concat "generation" gen))
+            (run-n-generations (- n 1) new-grid (+ gen 1)))))
 
 ;; -----------------------------------------------------------------------------
 
 (defun display-grid (grid gen)
-    (sys/io/print-ln "generation :" gen)
     (map (lambda (r)
         (sys/io/print-ln (map (lambda (c)
             (if (eq? (car (cddr c)) :LIVE) :@ :_ )
