@@ -59,6 +59,8 @@ export function dumpKont (kont : Kontinue) : string {
     case 'BLOCK'      : return `${kont.type} : ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`;
     case 'HALT'       : return `${kont.type} : ${kont.result == undefined ? '' : pprint(kont.result)}`;
     case 'ERR'        : return `${kont.type} : ${pprint(kont.error)}`;
+    case 'FOLD/RIGHT' : return `${kont.type} : ${pprint(kont.seq)} ${pprint(kont.acc)}`;
+    case 'FOLD/LEFT'  : return `${kont.type} : ${pprint(kont.seq)} ${pprint(kont.acc)}`;
     case 'DROP'       : return `${kont.type}`;
     case 'COND'       : return `${kont.type}`;
     case 'SCOPE_EXIT' : return `${kont.type}`;
@@ -83,6 +85,8 @@ export function pprintKont (kont : Kontinue, depth : number) : string {
     case 'BLOCK'      : kontStr += ` ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
     case 'HALT'       : kontStr += ` ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
     case 'ERR'        : kontStr += ` ${pprint(kont.error)}`; break;
+    case 'FOLD/RIGHT' : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
+    case 'FOLD/LEFT'  : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
     case 'DROP'       : break;
     case 'COND'       : break;
     case 'SCOPE_EXIT' : break;

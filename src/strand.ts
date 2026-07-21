@@ -10,7 +10,7 @@ import {
     type Kontinue, type WaitFor,
     ThrowError, RaiseError,
     Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
-    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit, Fold, FoldLeft,
+    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit, Fold, FoldLeft, FoldRight,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
 
@@ -406,12 +406,19 @@ export class Strand {
                         let body = isNil(rest.rest) ? rest.first : cons(sym('do'), rest);
                         return Return( lambda( params, body, kont.env ), kont.env, kont.kont )
                     }
-                    case 'fold' : {
+                    case 'fold/l' : {
                         let [ acc, call, seq ] = uncons(tail);
                         if (acc  == undefined) return RaiseError(`Expected acc for FOLD, got undefined`, kont);
                         if (call == undefined) return RaiseError(`Expected call for FOLD, got undefined`, kont);
                         if (seq  == undefined) return RaiseError(`Expected seq for FOLD, got undefined`, kont);
-                        return EvalArgs( tail, [], kont.env, Fold( kont.env, kont.kont ) )
+                        return EvalArgs( tail, [], kont.env, Fold( 'FOLD/LEFT', kont.env, kont.kont ) )
+                    }
+                    case 'fold/r' : {
+                        let [ acc, call, seq ] = uncons(tail);
+                        if (acc  == undefined) return RaiseError(`Expected acc for FOLD, got undefined`, kont);
+                        if (call == undefined) return RaiseError(`Expected call for FOLD, got undefined`, kont);
+                        if (seq  == undefined) return RaiseError(`Expected seq for FOLD, got undefined`, kont);
+                        return EvalArgs( tail, [], kont.env, Fold( 'FOLD/RIGHT', kont.env, kont.kont ) )
                     }
                     case 'let': {
                         let name  = car(tail);
@@ -505,13 +512,23 @@ export class Strand {
             if (!isCallable(fold_call)) return RaiseError(`Expected <call> to be callable, got ${fold_call.type}`, kont);
             if (fold_seq  == undefined) return RaiseError(`Expected <seq> arg for FOLD, got undefined`, kont);
             if (!isCons(fold_seq))      return RaiseError(`Expected <seq> to be Cons, got ${fold_seq.type}`, kont);
-            return FoldLeft( fold_acc, fold_call, fold_seq, kont.env, kont.kont );
+            if (kont.kind == 'FOLD/LEFT') {
+                return FoldLeft( fold_acc, fold_call, fold_seq, kont.env, kont.kont );
+            }
+            if (kont.kind == 'FOLD/RIGHT') {
+                return FoldRight( fold_acc, fold_call, fold_seq, kont.env, kont.kont );
+            }
+            return RaiseError(`Unknown Fold Kind ${kont.kind}`, kont);
         case 'FOLD/LEFT':
+            // foldl f z []     = z
+            // foldl f z (x:xs) = foldl f (f z x) xs
             if (returned !== undefined) kont.acc = returned;
             if (isNil(kont.seq)) return Return( kont.acc, kont.env, kont.kont );
             return Return( list( kont.acc, kont.seq.first ), kont.env,
                         Apply( kont.call, kont.env,
                             FoldLeft( kont.acc, kont.call, kont.seq.rest, kont.env, kont.kont ) ) )
+        case 'FOLD/RIGHT':
+            throw new Error("WTF!");
         case 'DROP':
             return kont.kont;
         case 'RETURN':

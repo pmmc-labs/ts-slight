@@ -2,23 +2,17 @@
 
 
 (let lst-of-100 (list
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
-    0 0 0 0 0 0 0 0 0 0
+    1 2 3 4 5
 ))
 
+(defun fold (init f seq)
+    (if (nil? seq) init
+        (f (car seq) (fold init f (cdr seq)))))
+
 (time-it "list - map")
-(let result (map (lambda (x) (inc x)) lst-of-100))
+(let result (fold/r () (lambda (x acc) (cons (inc x) acc)) lst-of-100))
 (time-it/end "list - map")
 
-(time-it "list - sum")
-(pprint (sum result))
-(time-it/end "list - sum")
+(pprint result)
+
 
