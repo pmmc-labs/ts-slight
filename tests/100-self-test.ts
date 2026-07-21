@@ -182,6 +182,13 @@ prove(`
     (ok (>= 0 -1)           "... 0 >= -1")
     (ok (not (>= 1 2))      "... not (1 >= 2)")
 
+    (is (max 10 29) 29 "... got the right max")
+    (is (min 10 29) 10 "... got the right min")
+
+    (is (abs 10) 10 "... got the right abs")
+    (is (abs -10) 10 "... got the right abs")
+    (is (trunc 10.5) 10 "... got the right trunc")
+
     (diag "String Tests")
     (ok (== (~ "hello " "world") "hello world") "... ~ seems to work")
     (is (~ "hello" " world")    "hello world"   "... concatenate two strings")
@@ -233,6 +240,24 @@ prove(`
     (ok (>= "b" "a")                "... 'b' ge 'a'")
     (ok (>= "a" "a")                "... 'a' ge 'a'")
     (ok (not (>= "a" "b"))          "... not ('a' ge 'b')")
+
+    (is (uc "hello world") "HELLO WORLD" "... got the right uc")
+    (is (lc "HELLO WORLD") "hello world" "... got the right lc")
+
+    (is (index-of "HELLO WORLD" "OR") 7 "... got the right index-of")
+    (is (index-of "HELLO WORLD" "L") 2 "... got the right index-of")
+    (is (last-index-of "HELLO WORLD" "L") 9 "... got the right last-index-of")
+
+    (is (index-of "HELLO WORLD" "z") -1 "... got the right index-of")
+    (is (last-index-of "HELLO WORLD" "z") -1 "... got the right last-index-of")
+
+    (ok (starts-with "hello world" "hell") "... got the right starts-with")
+    (ok (not (starts-with "hello world" "rld")) "... got the right starts-with")
+    (ok (ends-with "hello world" "rld") "... got the right ends-with")
+    (ok (not (ends-with "hello world" "hell")) "... got the right ends-with")
+
+    (is (str-repeat "hey" 3) "heyheyhey" "... got the right repeat")
+    (is (str-split "hey,hey,hey" ",") (list "hey" "hey" "hey") "... got the right split")
 
     (diag "not operator tests")
     (ok (not #false)             "... not false = true")

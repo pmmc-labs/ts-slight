@@ -77,6 +77,15 @@ export function liftListOp (name : string, f : (n : LIST) => TERM) : Builtin {
     }
 }
 
+// ...
+
+export function liftNumUnOp (name : string, f : (n : number) => number) : Builtin {
+    return liftUnOp(name, (n : TERM) : Num | ERROR => {
+        if (!isNum(n)) return raise(`TYPE-ERROR! - ${name} expected Num got (${n.type})`);
+        return num(f( n.value ));
+    })
+}
+
 export function liftNumBinOp (name : string, f : (n : number, m : number) => number) : Builtin {
     return liftBinOp(name, (n : TERM, m : TERM) : Num | ERROR => {
         if (isNum(n) && isNum(m)) {
@@ -84,6 +93,13 @@ export function liftNumBinOp (name : string, f : (n : number, m : number) => num
         } else {
             return raise(`TYPE-ERROR! - ${name} expected Nums got (${n.type} ${m.type})`);
         }
+    })
+}
+
+export function liftStrUnOp (name : string, f : (n : string) => string) : Builtin {
+    return liftUnOp(name, (n : TERM) : Str | ERROR => {
+        if (!isStr(n)) return raise(`TYPE-ERROR! - ${name} expected Str got (${n.type})`);
+        return str(f( n.value ));
     })
 }
 
@@ -114,66 +130,127 @@ export function liftLiteralBoolOp (name : string, f : (n : JSLiteral, m : JSLite
 export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     let env : MapEnv = newMapEnv( core );
 
-    // numeric bin-ops
+    // -------------------------------------------------------------------------
+    // Constants
+    // -------------------------------------------------------------------------
+
+    env = bind( sym('PI'), num(Math.PI), env );
+
+    // -------------------------------------------------------------------------
+    // Maths
+    // -------------------------------------------------------------------------
+
+    // numeric ops
     env = bind( sym('+'), liftNumBinOp('+', (n, m) => n + m), env );
     env = bind( sym('-'), liftNumBinOp('-', (n, m) => n - m), env );
     env = bind( sym('*'), liftNumBinOp('*', (n, m) => n * m), env );
     env = bind( sym('/'), liftNumBinOp('/', (n, m) => n / m), env );
     env = bind( sym('%'), liftNumBinOp('%', (n, m) => n % m), env );
 
-    // numeric un-ops
-    // TODO: ... these
-    // (bind .abs   (n) "Num::abs")
-    // (bind .cos   (n) "Num::cos")
-    // (bind .sin   (n) "Num::sin")
-    // (bind .int   (n) "Num::int")
-    // (bind .sqrt  (n) "Num::sqrt")
-    // (bind .rand  (n) "Num::rand")
-    // (bind .chr   (n) "Num::chr")
-    // (bind .hex   (n) "Num::hex")
-    // (bind .max   (n m) "Num::max")
-    // (bind .min   (n m) "Num::min")
-    // (bind .ceil  (n m) "Num::ceil")
-    // (bind .floor (n m) "Num::floor"))
+    env = bind( sym('max'), liftNumBinOp('max', (n, m) => Math.max(n, m)), env );
+    env = bind( sym('min'), liftNumBinOp('min', (n, m) => Math.min(n, m)), env );
+    env = bind( sym('pow'), liftNumBinOp('pow', (n, m) => Math.pow(n, m)), env );
 
-    // string bin-ops
-    env = bind( sym('~'), liftStrBinOp('~', (n, m) => n + m), env );
-    env = bind( sym('concat'), liftListOp('concat', (args) =>
-        str( uncons(args).map((arg) =>
-            isStr(arg) ? arg.value : pprint(arg)
-        ).join('') )), env );
+    env = bind( sym('abs'), liftNumUnOp('abs', (n) => Math.abs(n)), env );
+    env = bind( sym('cos'), liftNumUnOp('cos', (n) => Math.cos(n)), env );
+    env = bind( sym('sin'), liftNumUnOp('sin', (n) => Math.sin(n)), env );
+    env = bind( sym('exp'), liftNumUnOp('exp', (n) => Math.exp(n)), env );
+    env = bind( sym('tan'), liftNumUnOp('tan', (n) => Math.tan(n)), env );
 
-    env = bind( sym('rand'), liftUnOp('rand', (n) => num(Math.floor(Math.random() * (n as Num).value))), env );
-    env = bind( sym('abs'), liftUnOp('abs', (n) => num(Math.abs((n as Num).value))), env );
+    env = bind( sym('ceil'),  liftNumUnOp('ceil',  (n) => Math.ceil(n)),  env );
+    env = bind( sym('sqrt'),  liftNumUnOp('sqrt',  (n) => Math.sqrt(n)),  env );
 
-    // string other-ops
-    // TODO: ... these
-    // (bind .uc      (n)     "Str::uc")
-    // (bind .lc      (n)     "Str::lc")
-    // (bind .fc      (n)     "Str::fc")
-    // (bind .ucfirst (n)     "Str::ucfirst")
-    // (bind .lcfirst (n)     "Str::lcfirst")
-    // (bind .hex     (n)     "Str::hex")
-    // (bind .oct     (n)     "Str::oct")
-    // (bind .chomp   (n)     "Str::chomp")
-    // (bind .length  (n)     "Str::length")
-    // (bind .index   (n m)   "Str::index")
-    // (bind .rindex  (n m)   "Str::rindex")
-    // (define .split (n p)   (split p n))
-    // (bind .join    (n p)   "join")
-    // (bind .repeat  (n r)   "Str::repeat")
-    // (bind .substr  (n o l) "Str::substr")
-    // ;; TODO
-    // ;; - .upper?
-    // ;; - .lower?
+    env = bind( sym('floor'), liftNumUnOp('floor', (n) => Math.floor(n)), env );
+    env = bind( sym('round'), liftNumUnOp('round', (n) => Math.round(n)), env );
+    env = bind( sym('trunc'), liftNumUnOp('trunc', (n) => Math.trunc(n)), env );
 
-    // literal comparison bin-ops
+    env = bind( sym('rand'), liftNumUnOp('rand', (n) => Math.floor(Math.random() * n)), env );
+
+    // -------------------------------------------------------------------------
+    // Strings
+    // -------------------------------------------------------------------------
+
+    // string ops
+    env = bind( sym('~'),      liftStrBinOp('~', (n, m) => n + m), env );
+    env = bind( sym('uc'),     liftStrUnOp('uc', (s) => s.toUpperCase()), env );
+    env = bind( sym('lc'),     liftStrUnOp('lc', (s) => s.toLowerCase()), env );
+    env = bind( sym('concat'), liftListOp('concat', (args) => str(uncons(args).map((arg) => isStr(arg) ? arg.value : pprint(arg)).join(''))), env );
+
+    // searching ...
+    env = bind( sym('index-of'), liftBinOp('index-of', (s : TERM, m : TERM) : Num | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (index-of) expected Str for the first arg, got (${s.type})`);
+        if (!isStr(m)) return raise(`TYPE-ERROR! - (index-of) expected Str for the second arg, got (${s.type})`);
+        return num(s.value.indexOf(m.value));
+    }), env );
+
+    env = bind( sym('last-index-of'), liftBinOp('last-index-of', (s : TERM, m : TERM) : Num | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (last-index-of) expected Str for the first arg, got (${s.type})`);
+        if (!isStr(m)) return raise(`TYPE-ERROR! - (last-index-of) expected Str for the second arg, got (${s.type})`);
+        return num(s.value.lastIndexOf(m.value));
+    }), env );
+
+    // predicates ...
+    env = bind( sym('starts-with'), liftBinOp('starts-with', (s : TERM, m : TERM) : Bool | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (starts-with) expected Str for the first arg, got (${s.type})`);
+        if (!isStr(m)) return raise(`TYPE-ERROR! - (starts-with) expected Str for the second arg, got (${s.type})`);
+        return bool(s.value.startsWith(m.value));
+    }), env );
+    env = bind( sym('ends-with'), liftBinOp('ends-with', (s : TERM, m : TERM) : Bool | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (ends-with) expected Str for the first arg, got (${s.type})`);
+        if (!isStr(m)) return raise(`TYPE-ERROR! - (ends-with) expected Str for the second arg, got (${s.type})`);
+        return bool(s.value.endsWith(m.value));
+    }), env );
+
+    // padding & constructing
+    env = bind( sym('pad-end'), liftListOp('pad-end', (args) : Str | ERROR => {
+        let [ s, n, l ] = uncons(args);
+        if (s == undefined || !isStr(s)) return raise(`TYPE-ERROR! - (pad-end) expected Str for the first arg, got  (${s == undefined ? 'UNDEF' : s.type})`);
+        if (n == undefined || !isNum(n)) return raise(`TYPE-ERROR! - (pad-end) expected Num for the second arg, got (${n == undefined ? 'UNDEF' : n.type})`);
+        if (l == undefined || !isStr(l)) return raise(`TYPE-ERROR! - (pad-end) expected Str for the third arg, got  (${l == undefined ? 'UNDEF' : l.type})`);
+        return str(s.value.padEnd(n.value, l.value));
+    }), env );
+    env = bind( sym('pad-start'), liftListOp('pad-start', (args) : Str | ERROR => {
+        let [ s, n, l ] = uncons(args);
+        if (s == undefined || !isStr(s)) return raise(`TYPE-ERROR! - (pad-start) expected Str for the first arg, got  (${s == undefined ? 'UNDEF' : s.type})`);
+        if (n == undefined || !isNum(n)) return raise(`TYPE-ERROR! - (pad-start) expected Num for the second arg, got (${n == undefined ? 'UNDEF' : n.type})`);
+        if (l == undefined || !isStr(l)) return raise(`TYPE-ERROR! - (pad-start) expected Str for the third arg, got  (${l == undefined ? 'UNDEF' : l.type})`);
+        return str(s.value.padStart(n.value, l.value));
+    }), env );
+
+    env = bind( sym('str-repeat'), liftBinOp('str-repeat', (s : TERM, n : TERM) : Str | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (str-repeat) expected Str for the first arg, got (${s.type})`);
+        if (!isNum(n)) return raise(`TYPE-ERROR! - (str-repeat) expected Num for the second arg, got (${n.type})`);
+        return str(s.value.repeat(n.value));
+    }), env );
+
+    env = bind( sym('str-split'), liftBinOp('str-split', (s : TERM, m : TERM) : LIST | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (str-split) expected Str for the first arg, got (${s.type})`);
+        if (!isStr(m)) return raise(`TYPE-ERROR! - (str-split) expected Str for the second arg, got (${m.type})`);
+        if (s.value.length == 0) return NIL;
+        return list( ...s.value.split(m.value).map(str) );
+    }), env );
+
+    // properties ...
+    env = bind( sym('str-len'), liftUnOp('str-len', (s : TERM) : Num | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (str-length) expected Str got (${s.type})`);
+        return num(s.value.length);
+    }), env );
+
+    // -------------------------------------------------------------------------
+    // Equality & Ordering
+    // -------------------------------------------------------------------------
+
+    // literal comparison bin-ops (num, str, bool)
     env = bind( sym('=='), liftLiteralBoolOp('==', (n, m) => n == m), env );
     env = bind( sym('!='), liftLiteralBoolOp('!=', (n, m) => n != m), env );
     env = bind( sym('<='), liftLiteralBoolOp('<=', (n, m) => n <= m), env );
     env = bind( sym('<'),  liftLiteralBoolOp('<',  (n, m) => n <  m), env );
     env = bind( sym('>='), liftLiteralBoolOp('>=', (n, m) => n >= m), env );
     env = bind( sym('>'),  liftLiteralBoolOp('>',  (n, m) => n >  m), env );
+
+    // -------------------------------------------------------------------------
+    // Predicates
+    // -------------------------------------------------------------------------
 
     // structural equality
     env = bind( sym('eq?'),  liftBinOp('eq?', (n, m) => eq(n, m) ? TRUE : FALSE), env );
@@ -190,7 +267,15 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('true?'),     liftUnOp('true?',     (t) => isBool(t) && t === TRUE  ? TRUE : FALSE), env );
     env = bind( sym('false?'),    liftUnOp('false?',    (t) => isBool(t) && t === FALSE ? TRUE : FALSE), env );
 
+    // -------------------------------------------------------------------------
+    // Booleans
+    // -------------------------------------------------------------------------
+
     env = bind( sym('not'),  liftUnOp('not',  (t) => bool(isBool(t) ? t !== TRUE : t === NIL)), env );
+
+    // -------------------------------------------------------------------------
+    // Lists and Pairs
+    // -------------------------------------------------------------------------
 
     // cons functions
     env = bind( sym('cons'), liftBinOp('cons',  (h, t) => { if (isList(t))    return cons(h, t); return raise(`Expected a list for second arg to cons, not ${t.type}`); }), env );
@@ -204,8 +289,27 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('head'), liftUnOp('head',   (list) => { if (isCons(list)) return car(list); return raise(`Expected a list for head, not ${list.type}`); }),  env );
     env = bind( sym('tail'), liftUnOp('tail',   (list) => { if (isCons(list)) return cdr(list); return raise(`Expected a list for tail, not ${list.type}`); }),  env );
 
+    // -------------------------------------------------------------------------
+    // Utils ...
+    // -------------------------------------------------------------------------
+
     // utilities ...
     env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
+
+    // -------------------------------------------------------------------------
+    // .... DEVELOPMENT STUFF .... (not really part of the language)
+    // -------------------------------------------------------------------------
+
+    // NOTE: this is just a place to park this work now
+    // until the I/O system evolves
+    env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
+        if (isNil(args)) return NIL;
+        if (isCons(args.first)) args = args.first;
+        console.log(uncons(args).map((arg) =>
+            isStr(arg) ? arg.value : pprint(arg)
+        ).join(''));
+        return NIL;
+    }), env );
 
     // immediate mode GUI :P
     env = bind( sym('poke'), liftBinOp('poke', (char, at) => {
@@ -228,17 +332,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
         return NIL;
     }), env );
 
-    // NOTE: this is just a place to park this work now
-    // until the I/O system evolves
-    env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
-        if (isNil(args)) return NIL;
-        if (isCons(args.first)) args = args.first;
-        console.log(uncons(args).map((arg) =>
-            isStr(arg) ? arg.value : pprint(arg)
-        ).join(''));
-        return NIL;
-    }), env );
-
+    // cheap benchmarking that is probably totally inaccurate
     env = bind( sym('time-it'),     liftUnOp('time-it',     (t) => { if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);     console.time(t.value);    return NIL; }), env );
     env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => { if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return NIL; }), env );
 
