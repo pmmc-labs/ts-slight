@@ -24,8 +24,11 @@ export type Define    = { type : 'DEFINE',    name : Sym                 } & Kon
 
 export type FoldKind  = 'FOLD/LEFT' | 'FOLD/RIGHT';
 export type Fold      = { type : 'FOLD', kind : FoldKind } & Kontinuation
-export type FoldLeft  = { type : 'FOLD/LEFT', acc : TERM, call : CALLABLE, seq : LIST } & Kontinuation
-export type FoldRight = { type : 'FOLD/RIGHT', acc : TERM, call : CALLABLE, seq : LIST } & Kontinuation
+
+export type FoldLeft   = { type : 'FOLD/LEFT',    acc  : TERM, call : CALLABLE, seq : LIST } & Kontinuation
+export type FoldRight  = { type : 'FOLD/RIGHT',   acc  : TERM, call : CALLABLE, seq : LIST } & Kontinuation
+export type FoldRightK = { type : 'FOLD/RIGHT/K', item : TERM, call : CALLABLE } & Kontinuation
+
 
 export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
 export type Send      = { type : 'SEND'       } & Kontinuation
@@ -46,6 +49,7 @@ export type Kontinue =
     | Fold
     | FoldLeft
     | FoldRight
+    | FoldRightK
     | Drop
     | Return
     | Block
@@ -96,6 +100,10 @@ export function FoldLeft (acc : TERM, call : CALLABLE, seq : LIST, env : Env, ko
 
 export function FoldRight (acc : TERM, call : CALLABLE, seq : LIST, env : Env, kont : Kontinue) : FoldRight {
     return { type  : 'FOLD/RIGHT', acc, call, seq, env, kont }
+}
+
+export function FoldRightK (item : TERM, call : CALLABLE, env : Env, kont : Kontinue) : FoldRightK {
+    return { type  : 'FOLD/RIGHT/K', item, call, env, kont }
 }
 
 export function Return (value : TERM, env : Env, kont : Kontinue) : Return {

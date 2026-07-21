@@ -10,7 +10,8 @@ import {
     type Kontinue, type WaitFor,
     ThrowError, RaiseError,
     Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
-    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit, Fold, FoldLeft, FoldRight,
+    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
+    Fold, FoldLeft, FoldRight, FoldRightK,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
 
@@ -520,15 +521,18 @@ export class Strand {
             }
             return RaiseError(`Unknown Fold Kind ${kont.kind}`, kont);
         case 'FOLD/LEFT':
-            // foldl f z []     = z
-            // foldl f z (x:xs) = foldl f (f z x) xs
             if (returned !== undefined) kont.acc = returned;
             if (isNil(kont.seq)) return Return( kont.acc, kont.env, kont.kont );
             return Return( list( kont.acc, kont.seq.first ), kont.env,
                         Apply( kont.call, kont.env,
                             FoldLeft( kont.acc, kont.call, kont.seq.rest, kont.env, kont.kont ) ) )
         case 'FOLD/RIGHT':
-            throw new Error("WTF!");
+            if (isNil(kont.seq)) return Return( kont.acc, kont.env, kont.kont );
+            return FoldRight( kont.acc, kont.call, kont.seq.rest, kont.env,
+                      FoldRightK( kont.seq.first, kont.call, kont.env, kont.kont ) );
+        case 'FOLD/RIGHT/K':
+            if (returned == undefined) return RaiseError(`Expected value returned to FOLD/RIGHT/K`, kont);
+            return Return( list( kont.item, returned ), kont.env, Apply( kont.call, kont.env, kont.kont ) );
         case 'DROP':
             return kont.kont;
         case 'RETURN':

@@ -13,14 +13,11 @@
 ;; List functions
 ;; -----------------------------------------------------------------------------
 
-(defun reduce (acc f lst)
-    (fold/l acc f lst))
-
 (defun length (lst)
     (fold/l 0 (lambda (acc x) (inc acc)) lst))
 
-(defun map (f lst)
-    (fold/l () (lambda (x acc) (cons (f x) acc)) lst))
+(defun reverse (lst)
+    (fold/l () (lambda (acc x) (cons x acc)) lst))
 
 (defun sum (lst)
     (fold/l 0 (lambda (acc n) (+ acc n)) lst))
@@ -28,11 +25,14 @@
 (defun product (lst)
     (fold/l 1 (lambda (acc n) (* acc n)) lst))
 
+(defun map (f lst)
+    (fold/r () (lambda (x acc) (cons (f x) acc)) lst))
+
 (defun grep (f lst)
-    (fold/l () (lambda (acc x) (if (true? (f x)) (cons x acc) acc)) lst))
+    (fold/r () (lambda (x acc) (if (true? (f x)) (cons x acc) acc)) lst))
 
 (defun filter (f lst)
-    (fold/l () (lambda (acc x) (if (false? (f x)) (cons x acc) acc)) lst))
+    (fold/r () (lambda (x acc) (if (false? (f x)) (cons x acc) acc)) lst))
 
 (defun nth (i lst)
     (if (nil? lst) ()
