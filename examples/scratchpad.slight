@@ -1,9 +1,7 @@
 
+(defun tail-call-demo (n)
+    (if (== n 0) 0
+       (tail-call-demo (- n 1))))
 
-
-(+ (+ 5 5) (* 4 5))
-
-
-
-
+(pprint (tail-call-demo 10))
 

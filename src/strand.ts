@@ -1,9 +1,9 @@
 import { DEBUG, LOG, TRACE, dumpKont } from './debug.ts';
 import {
-    type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
+    type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST, type Cons,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
-    NIL, car, cdr, cons, uncons, list, sym, lambda,
+    NIL, car, cdr, cadr, cddr, cons, uncons, list, sym, lambda, num, str, bool,
     newPid, newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {
@@ -49,15 +49,16 @@ class RunQueue {
 export type Chan = { id : number, queue : TERM[] }
 
 export type Process = {
-    pid     : Pid,
-    kont    : Kontinue,
-    steps   : number,
-    mailbox : Chan
+    pid        : Pid,
+    kont       : Kontinue,
+    steps      : number,
+    mailbox    : Chan,
+    expr_stack : TERM[],
 }
 
 export type ProcessResult =
     | { type : 'HALT', result : TERM,  pid : Pid, steps : number }
-    | { type : 'ERR',   error : ERROR, pid : Pid, steps : number }
+    | { type : 'ERR',   error : ERROR, pid : Pid, steps : number, expr_stack : TERM[] }
 
 export class Strand {
     public runqueue : RunQueue = new RunQueue();
@@ -194,7 +195,7 @@ export class Strand {
             proc_result = { type : 'HALT', result : proc.kont.result, pid : proc.pid, steps : proc.steps }
         } else if (proc.kont.type == 'ERR') {
             this.deliverFault( haltKey(proc.pid), proc.kont.error );
-            proc_result = { type : 'ERR', error : proc.kont.error, pid : proc.pid, steps : proc.steps }
+            proc_result = { type : 'ERR', error : proc.kont.error, pid : proc.pid, steps : proc.steps, expr_stack : proc.expr_stack }
         } else {
             throw new Error(`A halted process should be HALT or ERR`);
         }
@@ -215,7 +216,7 @@ export class Strand {
             }
         }
 
-        let proc : Process = { pid, kont, steps : 0, mailbox : { id : ++this.CHAN_SEQ, queue : [] } };
+        let proc : Process = { pid, kont, steps : 0, mailbox : { id : ++this.CHAN_SEQ, queue : [] }, expr_stack : [] };
         this.procs.set( pid.ident, proc );
         // push this so it runs immedately
         this.runqueue.push(proc);
@@ -363,6 +364,10 @@ export class Strand {
                 let head = car(kont.expr);
                 let tail = cdr(kont.expr);
 
+                // -- EXPR-SCOPE --
+                proc.expr_stack.push( list( sym(':EVAL'), kont.expr ));
+                // -- EXPR-SCOPE --
+
                 if (isSym(head) && head.ident === 'recv') {
                     if (proc.mailbox.queue.length > 0) {
                         return Return( proc.mailbox.queue.shift()!, kont.env, kont.kont );
@@ -494,6 +499,14 @@ export class Strand {
             let args = returned;
             switch (true) {
             case isLambda(kont.call):
+                // -- EXPR-SCOPE --
+                // record the call marker for SCOPE-EXIT to clean up
+                proc.expr_stack.push(list( sym(':APPLY'),
+                    list( sym(':depth'), num(proc.expr_stack.reduce((acc, e) => (car(e as Cons) === sym(':APPLY') ? acc+1 : acc ), 0))),
+                    list( sym(':call'), (kont.call.name != undefined ? kont.call.name : kont.call) ),
+                    list( sym(':args'), args ),
+                ));
+                // -- EXPR-SCOPE --
                 let local = bindParams( kont.call.params, args, kont.call.env );
                 if (isError(local)) return ThrowError(local, kont);
                 return Eval( kont.call.body, local, ScopeExit( kont.env, kont.kont, proc.steps ) )
@@ -534,6 +547,9 @@ export class Strand {
             if (returned == undefined) return RaiseError(`Expected value returned to FOLD/RIGHT/K`, kont);
             return Return( list( kont.item, returned ), kont.env, Apply( kont.call, kont.env, kont.kont ) );
         case 'DROP':
+            // -- EXPR-SCOPE --
+            proc.expr_stack.splice(0);
+            // -- EXPR-SCOPE --
             return kont.kont;
         case 'RETURN':
             return kont;
@@ -604,7 +620,19 @@ export class Strand {
             }
         case 'SCOPE_EXIT':
             if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
-            return Return( returned, kont.env, kont.kont )
+            // -- EXPR-SCOPE --
+            while (kont.type == 'SCOPE_EXIT') {
+                while (proc.expr_stack.length > 0) {
+                    let expr = proc.expr_stack.pop()!;
+                    if (car(expr as Cons) == sym(':APPLY')) {
+                        proc.expr_stack.pop()!;
+                        break;
+                    }
+                }
+                kont = kont.kont;
+            }
+            // -- EXPR-SCOPE --
+            return Return( returned, kont.env, kont )
         default:
             return RaiseError(`Unknown Kontinue`, kont);
         }

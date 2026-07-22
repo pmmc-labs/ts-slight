@@ -96,7 +96,9 @@ export async function main () {
         if (proc.type == 'HALT') {
             if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
         } else if (proc.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+            console.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+            proc.expr_stack.reverse().forEach((expr, i) => console.log(`${i.toString().padStart(4, ' ')} : ${pprint(expr)}`));
+            console.groupEnd();
         }
         if (DEBUG) console.groupEnd();
     }
