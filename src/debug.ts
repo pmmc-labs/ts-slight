@@ -12,20 +12,20 @@ export function TRACE (proc : Process) : void {
     switch (proc.kont.type) {
     case 'EVAL_HEAD'  :
     case 'EVAL_ARGS'  :
-    case 'EVAL_EXPR'  : return;
-    case 'EVAL'       :
-    case 'APPLY'      :
-    case 'RETURN'     :
     case 'DEFINE'     :
     case 'DROP'       :
     case 'COND'       :
-    case 'SCOPE_EXIT' :
     case 'SEND'       :
     case 'SYSCALL'    :
     case 'YIELD'      :
-    case 'BLOCK'      :
+    case 'EVAL'       :
+    case 'BLOCK'      : return;
+    case 'APPLY'      :
+    case 'SCOPE_EXIT' :
+    case 'RETURN'     :
     case 'HALT'       :
     case 'ERR'        :
+    case 'EVAL_EXPR'  :
     }
 
     let depth = 0;
@@ -38,13 +38,37 @@ export function TRACE (proc : Process) : void {
 
     if (depth > 0) depth--;
 
-    console.log(
-        [
-            proc.pid.ident.toString().padStart(4, '0'),
-            proc.steps.toString().padStart(6, '0'),
-            pprintKont(proc.kont, depth)
-        ].join(' | '),
-    );
+    switch (proc.kont.type) {
+    case 'APPLY':
+        if (proc.kont.call.type == 'LAMBDA') {
+            console.log(
+                [
+                    proc.pid.ident.toString().padStart(4, '0'),
+                    proc.steps.toString().padStart(6, '0'),
+                    `${proc.kont.type.padStart(11, ' ')} > ${pprint(proc.kont.call)}`
+                ].join(' | '),
+            );
+        }
+        break;
+    case 'SCOPE_EXIT':
+        console.log(
+            [
+                proc.pid.ident.toString().padStart(4, '0'),
+                proc.steps.toString().padStart(6, '0'),
+                `${proc.kont.type.padStart(11, ' ')} < ${proc.kont.entry_step}`
+            ].join(' | '),
+        );
+        break;
+    default:
+        console.log(
+            [
+                proc.pid.ident.toString().padStart(4, '0'),
+                proc.steps.toString().padStart(6, '0'),
+                pprintKont(proc.kont, depth)
+            ].join(' | '),
+        );
+        break;
+    }
 }
 
 export function dumpKont (kont : Kontinue) : string {

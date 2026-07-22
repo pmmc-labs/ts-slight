@@ -287,7 +287,7 @@ export class Strand {
                     if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
                     let body = body_exprs.length == 1 ? body_exprs[0] : list(sym('do'), ...body_exprs);
                     if (body === undefined) throw new Error(`defun <name> <params> ... really shouldnt happen, just typescript being annoying`);
-                    root_env = bind( name, lambda( params, body, root_env ), root_env );
+                    root_env = bind( name, lambda( params, body, root_env, name ), root_env );
                 } else {
                     to_run.push(expr);
                 }
@@ -496,7 +496,7 @@ export class Strand {
             case isLambda(kont.call):
                 let local = bindParams( kont.call.params, args, kont.call.env );
                 if (isError(local)) return ThrowError(local, kont);
-                return Eval( kont.call.body, local, ScopeExit( kont.env, kont.kont ) )
+                return Eval( kont.call.body, local, ScopeExit( kont.env, kont.kont, proc.steps ) )
             case isBuiltin(kont.call):
                 return Return( kont.call.body(args), kont.env, kont.kont )
             default:

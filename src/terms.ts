@@ -19,7 +19,7 @@ export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : Ma
 export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
 export type Env      = MapEnv | RibEnv
 
-export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env }
+export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env, name : Sym | undefined }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
 // -----------------------------------------------------------------------------
@@ -91,8 +91,8 @@ export function sym (ident : string) : Sym {
     return symbol;
 }
 
-export function lambda (params : LIST, body : TERM, env : Env) : Lambda {
-    return { type : 'LAMBDA', params, body, env }
+export function lambda (params : LIST, body : TERM, env : Env, name : Sym | undefined = undefined) : Lambda {
+    return { type : 'LAMBDA', params, body, env, name }
 }
 
 export function raise (error : any) : ERROR {
@@ -232,7 +232,10 @@ export function pprint (t : TERM) : string {
     case isSym(t)     : return t.ident
     case isPid(t)     : return `PID[${t.ident}]`
     case isCons(t)    : return `(${uncons(t).map(pprint).join(' ')})`
-    case isLambda(t)  : return `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`
+    case isLambda(t)  :
+        return t.name != undefined
+            ? `(λ ${pprint(t.name)} ${pprint(t.params)} -> ${pprint(t.body)})`
+            : `(<lambda> ${pprint(t.params)} ${pprint(t.body)})`;
     case isBuiltin(t) : return `#<${t.name}>`
     case isEnv(t)     : {
         if (t.type == 'MENV') return `{MENV[${t.bindings.size}] ${t.parent ? pprint(t.parent) : '~'}}`;
