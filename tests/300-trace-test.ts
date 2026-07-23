@@ -30,6 +30,7 @@ const isFrameLine = (line : string, name : string) : boolean =>
     assert.ok( i1 >= 0, 'trace has a (level-1 42) frame' );
     assert.ok( i3 < i2 && i2 < i1, 'call frames are innermost-first' );
     assert.ok( err.trace[i3]!.includes('(level-3 42)'), 'frame shows the args' );
+    assert.ok( err.trace.some((l) => l.startsWith('  in ')), 'trace has context lines' );
 }
 
 // -- error inside a tail loop: exactly one frame survives TCO -----------------
@@ -46,6 +47,7 @@ const isFrameLine = (line : string, name : string) : boolean =>
     let loop_frames = err.trace.filter((l) => isFrameLine(l, 'loop'));
     assert.equal( loop_frames.length, 1, 'exactly one loop frame survives TCO' );
     assert.ok( loop_frames[0]!.includes('(loop 0)'), 'the frame shows the current call, not the first' );
+    // 5 context konts + a handful of frames; see renderTrace defaults (context_frames=5, call_cap=10)
     assert.ok( err.trace.length < 25, `trace is bounded, got ${err.trace.length} lines` );
 }
 
@@ -63,6 +65,35 @@ const isFrameLine = (line : string, name : string) : boolean =>
     let sink_frames = err.trace.filter((l) => isFrameLine(l, 'sink'));
     assert.equal( sink_frames.length, 20, 'capped at first 10 + last 10 call frames' );
     assert.ok( err.trace.some((l) => l.includes('frame(s) elided')), 'elision line present' );
+}
+
+// -- deadlocked process: swept child faults with a DEADLOCKED! error ----------
+{
+    let results = await run(`
+        (fork (recv))
+        :main-done
+    `);
+    let halt = results.find((r) => r.type == 'HALT');
+    let err  = results.find((r) => r.type == 'ERR');
+    if (halt == undefined || halt.type != 'HALT') throw new Error('expected a HALT result for main');
+    if (err  == undefined || err.type  != 'ERR')  throw new Error('expected an ERR result for the swept child');
+
+    assert.ok( String(err.error.error).includes('DEADLOCKED'), 'error mentions DEADLOCKED' );
+    assert.ok( err.trace.some((l) => l.startsWith('  in BLOCK')), 'trace has a BLOCK context line' );
+}
+
+// -- joiner fault keeps its own trace, not the child's -------------------------
+{
+    let results = await run(`
+        (defun boom (x) (car x))
+        (defun child () (+ 1 (boom 1)))
+        (join (fork (child)))
+    `);
+    let errs = results.filter((r) => r.type == 'ERR');
+    assert.equal( errs.length, 2, 'expected two ERR results (child and joiner)' );
+
+    let with_boom = errs.filter((e) => e.type == 'ERR' && e.trace.some((l) => isFrameLine(l, 'boom')));
+    assert.equal( with_boom.length, 1, 'exactly one of the two traces has the (boom 1) frame' );
 }
 
 // -- 1M tail calls complete (previously quadratic / unrunnable) ---------------
