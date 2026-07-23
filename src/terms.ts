@@ -243,7 +243,7 @@ export function pprint (t : TERM) : string {
         for (let n = t.head; n != undefined; n = n.next) names.push(n.name);
         return `{RENV(${names.join(' ')}) ${pprint(t.parent)}}`;
     }
-    case isError(t)   : return `E!${String(t.error)}`
+    case isError(t)   : return `E!${typeof(t.error) == 'string' ? t.error : pprint(t.error)}`
     default : throw new Error(`WTF IS ${String(t)}`);
     }
 }

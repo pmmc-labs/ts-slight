@@ -293,8 +293,12 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     // Utils ...
     // -------------------------------------------------------------------------
 
-    // utilities ...
+    env = bind( sym('raise'), liftUnOp('raise', (t) => raise(t)), env );
+
     env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
+
+    let GENSYM_SEQ = 0;
+    env = bind( sym('gensym'), liftNulOp('gensym', () => sym(`#:${++GENSYM_SEQ}`)), env );
 
     // -------------------------------------------------------------------------
     // .... DEVELOPMENT STUFF .... (not really part of the language)

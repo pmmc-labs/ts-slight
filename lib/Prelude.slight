@@ -50,6 +50,17 @@
         (cons end ())
         (cons start (range (+ start step) end step))))
 
+;; associative lists ...
+
+(defun assoc (k v table)
+    (cons (list k v) table))
+
+(defun lookup (k table)
+    (if (nil? table) :not-found
+        (if (eq? k (car (car table)))
+            (cadr (car table))
+            (lookup k (cdr table)))))
+
 ;; -----------------------------------------------------------------------------
 ;; System functions
 ;; -----------------------------------------------------------------------------
