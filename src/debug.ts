@@ -1,6 +1,6 @@
 import { type Process  } from './strand.ts';
 import { type Kontinue } from './konts.ts';
-import { pprint } from './terms.ts';
+import { pprint, uncons } from './terms.ts';
 
 export const DEBUG : boolean = (globalThis as any).process?.env?.["DEBUG"] == '1';
 
@@ -55,7 +55,7 @@ export function TRACE (proc : Process) : void {
             [
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
-                `${proc.kont.type.padStart(11, ' ')} < ${proc.kont.entry_step}`
+                `${proc.kont.type.padStart(11, ' ')} < ${pprint(proc.kont.call)}`
             ].join(' | '),
         );
         break;
@@ -87,7 +87,7 @@ export function dumpKont (kont : Kontinue) : string {
     case 'FOLD/LEFT'  : return `${kont.type} : ${pprint(kont.seq)} ${pprint(kont.acc)}`;
     case 'DROP'       : return `${kont.type}`;
     case 'COND'       : return `${kont.type}`;
-    case 'SCOPE_EXIT' : return `${kont.type}`;
+    case 'SCOPE_EXIT' : return `${kont.type} : ${pprint(kont.call)}`;
     case 'SEND'       : return `${kont.type}`;
     case 'SYSCALL'    : return `${kont.type}`;
     case 'YIELD'      : return `${kont.type}`;
@@ -113,10 +113,50 @@ export function pprintKont (kont : Kontinue, depth : number) : string {
     case 'FOLD/LEFT'  : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
     case 'DROP'       : break;
     case 'COND'       : break;
-    case 'SCOPE_EXIT' : break;
+    case 'SCOPE_EXIT' : kontStr += ` ${pprint(kont.call)}`; break;
     case 'SEND'       : break;
     case 'SYSCALL'    : break;
     case 'YIELD'      : break;
     }
     return kontStr;
+}
+
+// Reconstruct an error trace by walking the kont chain: the innermost
+// pending konts give expression-level context, and each surviving
+// SCOPE_EXIT is one call frame (tail-elided frames are invisible).
+// Deep chains are capped Python-style: first/last `call_cap` frames.
+export function renderTrace (kont : Kontinue, context_frames : number = 5, call_cap : number = 10) : string[] {
+    if (kont.type == 'ERR') kont = kont.kont;
+
+    let lines : string[] = [];
+
+    let walk : Kontinue = kont;
+    let context = 0;
+    while (walk.type != 'HALT' && context < context_frames) {
+        lines.push(`  in ${dumpKont(walk)}`);
+        context++;
+        walk = walk.kont;
+    }
+
+    let frames : string[] = [];
+    walk = kont;
+    while (walk.type != 'HALT') {
+        if (walk.type == 'SCOPE_EXIT') {
+            let name = walk.call.type == 'LAMBDA'
+                ? (walk.call.name != undefined ? walk.call.name.ident : '<lambda>')
+                : walk.call.name;
+            frames.push(`(${[ name, ...uncons(walk.args).map(pprint) ].join(' ')})`);
+        }
+        walk = walk.kont;
+    }
+
+    let fmt = (f : string, i : number) : string => `  ${i.toString().padStart(4, ' ')} : ${f}`;
+    if (frames.length > (2 * call_cap) + 1) {
+        lines.push( ...frames.slice(0, call_cap).map(fmt) );
+        lines.push(`  ... ${frames.length - (2 * call_cap)} frame(s) elided ...`);
+        lines.push( ...frames.slice(-call_cap).map((f, i) => fmt(f, frames.length - call_cap + i)) );
+    } else {
+        lines.push( ...frames.map(fmt) );
+    }
+    return lines;
 }

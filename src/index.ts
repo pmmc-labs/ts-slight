@@ -14,6 +14,7 @@ import {
 export * from './debug.ts';
 export * from './terms.ts';
 export * from './parser.ts';
+export * from './reader.ts';
 export * from './builtins.ts';
 export * from './syscalls.ts';
 export * from './konts.ts';
@@ -97,7 +98,7 @@ export async function main () {
             if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
         } else if (proc.type == 'ERR') {
             console.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
-            proc.expr_stack.reverse().forEach((expr, i) => console.log(`${i.toString().padStart(4, ' ')} : ${pprint(expr)}`));
+            proc.trace.forEach((line) => console.log(line));
             console.groupEnd();
         }
         if (DEBUG) console.groupEnd();

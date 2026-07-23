@@ -29,7 +29,7 @@ export type FoldLeft   = { type : 'FOLD/LEFT',    acc  : TERM, call : CALLABLE, 
 export type FoldRight  = { type : 'FOLD/RIGHT',   acc  : TERM, call : CALLABLE, seq : LIST } & Kontinuation
 export type FoldRightK = { type : 'FOLD/RIGHT/K', item : TERM, call : CALLABLE } & Kontinuation
 
-export type ScopeExit = { type : 'SCOPE_EXIT', entry_step : number } & Kontinuation
+export type ScopeExit = { type : 'SCOPE_EXIT', call : CALLABLE, args : LIST } & Kontinuation
 
 export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
 export type Send      = { type : 'SEND'       } & Kontinuation
@@ -142,8 +142,11 @@ export function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
     return { type : 'HALT', result, env }
 }
 
-export function ScopeExit (env : Env, kont : Kontinue, entry_step : number) : ScopeExit {
-    if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont, kont.entry_step);
-    return { type : 'SCOPE_EXIT', env, kont, entry_step }
+// A tail call collapses into the frame it replaces: the new call's
+// identity, the old frame's continuation. Elided frames are invisible
+// to traces (Erlang/Scheme semantics).
+export function ScopeExit (call : CALLABLE, args : LIST, env : Env, kont : Kontinue) : ScopeExit {
+    if (kont.type == 'SCOPE_EXIT') return { type : 'SCOPE_EXIT', call, args, env, kont : kont.kont };
+    return { type : 'SCOPE_EXIT', call, args, env, kont }
 }
 
