@@ -20,7 +20,7 @@
             (:+      (Point (+ x (o :x ())) (+ y (o :y ()))))
             (:-      (Point (- x (o :x ())) (- y (o :y ()))))
             (:==     (and (== x (o :x ())) (== y (o :y ()))))
-            (:!=     (and (!= x (o :x ())) (!= y (o :y ()))))
+            (:!=     (or  (!= x (o :x ())) (!= y (o :y ()))))
             (:to-str (concat "Point:" x ":" y))
             (#true   (super m o)))))
 
@@ -34,7 +34,7 @@
             (:+      (Point-3D (+ x (o :x ())) (+ y (o :y ())) (+ z (o :z ())) ))
             (:-      (Point-3D (- x (o :x ())) (- y (o :y ())) (- z (o :z ())) ))
             (:==     (and (== z (o :z ())) (super :== o) ))
-            (:!=     (and (!= z (o :z ())) (super :!= o) ))
+            (:!=     (or  (!= z (o :z ())) (super :!= o) ))
             (:to-str (concat "Point-3D:" x ":" y ":" z))
             (#true   (super m o)))))
 

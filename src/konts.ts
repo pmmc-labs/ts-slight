@@ -143,7 +143,7 @@ export function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
 }
 
 export function ScopeExit (env : Env, kont : Kontinue, entry_step : number) : ScopeExit {
-    //if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont, kont.entry_step);
+    if (kont.type == 'SCOPE_EXIT') return ScopeExit(env, kont.kont, kont.entry_step);
     return { type : 'SCOPE_EXIT', env, kont, entry_step }
 }
 

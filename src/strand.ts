@@ -1,6 +1,6 @@
 import { DEBUG, LOG, TRACE, dumpKont } from './debug.ts';
 import {
-    type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST, type Cons,
+    type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST, type Cons, type Num,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
     NIL, car, cdr, cadr, cddr, cons, uncons, list, sym, lambda, num, str, bool,
@@ -502,9 +502,10 @@ export class Strand {
                 // -- EXPR-SCOPE --
                 // record the call marker for SCOPE-EXIT to clean up
                 proc.expr_stack.push(list( sym(':APPLY'),
+                    list( sym(':step'),  num(proc.steps)),
                     list( sym(':depth'), num(proc.expr_stack.reduce((acc, e) => (car(e as Cons) === sym(':APPLY') ? acc+1 : acc ), 0))),
-                    list( sym(':call'), (kont.call.name != undefined ? kont.call.name : kont.call) ),
-                    list( sym(':args'), args ),
+                    list( sym(':call'),  (kont.call.name != undefined ? kont.call.name : kont.call) ),
+                    list( sym(':args'),  args ),
                 ));
                 // -- EXPR-SCOPE --
                 let local = bindParams( kont.call.params, args, kont.call.env );
@@ -621,18 +622,18 @@ export class Strand {
         case 'SCOPE_EXIT':
             if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
             // -- EXPR-SCOPE --
-            while (kont.type == 'SCOPE_EXIT') {
-                while (proc.expr_stack.length > 0) {
-                    let expr = proc.expr_stack.pop()!;
-                    if (car(expr as Cons) == sym(':APPLY')) {
-                        proc.expr_stack.pop()!;
-                        break;
-                    }
+            //console.log('BEFORE', proc.expr_stack.map(pprint));
+            while (proc.expr_stack.length > 0) {
+                let expr = proc.expr_stack.pop()!;
+                if (car(expr as Cons) == sym(':APPLY')
+                && (cadr(cadr(expr as Cons) as Cons) as Num).value == kont.entry_step ) {
+                    proc.expr_stack.pop()!;
+                    break;
                 }
-                kont = kont.kont;
             }
+            //console.log('AFTER', proc.expr_stack.map(pprint));
             // -- EXPR-SCOPE --
-            return Return( returned, kont.env, kont )
+            return Return( returned, kont.env, kont.kont )
         default:
             return RaiseError(`Unknown Kontinue`, kont);
         }

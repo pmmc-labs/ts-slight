@@ -19,4 +19,4 @@
             (pinger target (- n 1)))))
 
 (let pong (fork (ponger)))
-(list (join (fork (pinger pong 3))) (join pong))
+(list (join (fork (pinger pong 30))) (join pong))

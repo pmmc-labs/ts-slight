@@ -1,13 +1,15 @@
 
 import {
     type TERM, type Sym, type Str, type Num, type Bool, type LIST, type Cons, type Nil,
-    list, cons, car, cdr, cadr, cddr, str, num, bool, sym, NIL, TRUE, FALSE, uncons,
+    list, cons, car, cdr, cadr, cddr, str, num, bool, sym, NIL, TRUE, FALSE, uncons, pprint,
     isCons, isNil, isSym, isStr, isNum, isBool, isTrue, isFalse,
 } from './terms.ts';
 
 export function expand (exprs : TERM[]) : TERM[] {
     return exprs.map(expand_expr)
 }
+
+var TOPIC_SEQ = 0;
 
 function expand_expr (expr : TERM) : TERM {
     switch (expr.type) {
@@ -32,6 +34,7 @@ function expand_expr (expr : TERM) : TERM {
                     throw new Error(`You forgot the topic on the (case) expression`)
                 }
                 let kases = uncons(tail.rest);
+                let topic_var = sym(`$case:topic:${pprint(topic)}:${++TOPIC_SEQ}`);
                 let compiled_kases : LIST = NIL;
                 while (kases.length > 0) {
                     let kase = kases.pop();
@@ -43,14 +46,14 @@ function expand_expr (expr : TERM) : TERM {
                     if (if_true == undefined) throw new Error(`Expected kase/if-true for CASE, got undefined`);
 
                     if (!isBool(cond)) {
-                        cond = list( sym('eq?'), topic, cond );
+                        cond = list( sym('eq?'), topic_var, cond );
                     }
                     if (if_true_rest.length > 0) {
                         if_true = list( sym('do'), if_true, ...if_true_rest);
                     }
                     compiled_kases = list( sym('if'), expand_expr(cond), expand_expr(if_true), compiled_kases );
                 }
-                return compiled_kases;
+                return list( sym('do'), list( sym('let'), topic_var, topic ), compiled_kases );
             case 'cond' :
                 let clauses = uncons(tail);
                 let compiled_clauses : LIST = NIL;
