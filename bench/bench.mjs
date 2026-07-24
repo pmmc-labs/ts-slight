@@ -34,23 +34,23 @@ const GC       = argv.includes('--gc'); // --trace-gc adds ~4% wall overhead, so
 const t_ix     = argv.indexOf('--trials');
 const TRIALS   = t_ix >= 0 ? parseInt(argv[t_ix + 1], 10) : 3;
 
-//const QUICK = [
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1',       '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10',      '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['100',     '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000',    '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10000',   '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['100000',  '100'] },
-//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000000', '100'] },
-//];
-
 const QUICK = [
-    { name : 'fib',        file : 'examples/fib.slight',              args : ['25'] },
-    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000', '100'] },
-    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['1', '25000'] },
-    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['100', '250'] },
-    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['10000', '10'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1',       '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10',      '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['100',     '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000',    '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10000',   '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['100000',  '100'] },
+    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000000', '100'] },
 ];
+
+//const QUICK = [
+//    { name : 'fib',        file : 'examples/fib.slight',              args : ['25'] },
+//    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000', '100'] },
+//    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['1', '25000'] },
+//    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['100', '250'] },
+//    { name : 'tournament', file : 'examples/fixed-tournament.slight', args : ['10000', '10'] },
+//];
 const EXTRA = [
     { name : 'fib',        file : 'examples/fib.slight',              args : ['27'] },
     { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10000', '100'] },

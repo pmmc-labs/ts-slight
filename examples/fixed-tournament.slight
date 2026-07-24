@@ -51,7 +51,7 @@
     (map (lambda (pid) (join pid)) pids))
 
 (defun verify-results (expected results)
-    (reduce 0 (lambda (failures r)
+    (fold/l 0 (lambda (failures r)
         (if (eq? r expected)
             failures
             (do (sys/io/print-ln "FAIL: expected " expected " got " r)

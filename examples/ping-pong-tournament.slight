@@ -46,7 +46,7 @@
     (<= (abs (- (cadr lhs) (cadr rhs))) tolerance))
 
 (defun check-results (results)
-    (reduce (car results) (lambda (acc r)
+    (fold/l (car results) (lambda (acc r)
         (let acc-p1 (car  acc))
         (let acc-p2 (cadr acc))
         (let r-p1   (car  r))
@@ -58,7 +58,7 @@
     ) (cdr results)))
 
 (defun calculate-totals (results)
-    (reduce 0 (lambda (acc r)
+    (fold/l 0 (lambda (acc r)
         (+ acc
             (+ (cadr (cadr (car  r)))
                (cadr (cadr (cadr r))))))

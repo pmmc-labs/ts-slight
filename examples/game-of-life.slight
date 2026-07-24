@@ -72,7 +72,7 @@
                 (if (== n 3) :LIVE :DEAD)))))
 
 (defun count-living-neighbors (neighbors)
-    (reduce 0 (lambda (acc neighbor)
+    (fold/l 0 (lambda (acc neighbor)
         (if (eq? (car (cddr neighbor)) :LIVE) (+ acc 1) acc ))
             neighbors))
 
