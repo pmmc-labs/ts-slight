@@ -135,7 +135,7 @@ class Editor {
         open $fh, '<', $path or die "Cannot open file ${path} for reading, because ".$!;
         while (my $line = readline($fh)) {
             chomp($line);
-            $self->editorAppendRow($line);
+            $self->editorInsertRow( scalar(@rows), $line );
         }
         close $fh or die "Cannot close file ${path} for reading, because ".$!;
         $filename = $path;
@@ -151,8 +151,13 @@ class Editor {
 
     ## -------------------------------------------------------------------------
 
-    method editorAppendRow ($row) {
-        push @rows => $row;
+    method editorInsertRow ($at, $row) {
+        return if $at < 0 || $at > scalar(@rows);
+        splice @rows, $at, 0, $row;
+    }
+
+    method editorDelRow ($at) {
+        splice @rows, $at, 1;
     }
 
     method editorRowAppendString ($row, $string, ) {
@@ -196,13 +201,19 @@ class Editor {
     }
 
     method editorInsertChar ($c) {
-        $self->editorAppendRow("") if $cy == scalar(@rows);
+        $self->editorInsertRow( scalar(@rows), "" ) if $cy == scalar(@rows);
         $rows[$cy] = $self->editorRowInsertChar( $rows[$cy], $cx, $c );
         $cx++;
     }
 
-    method editorDelRow ($at) {
-        splice @rows, $at, 1;
+    method editorInsertNewline {
+        if ($cx == 0) {
+            $self->editorInsertRow( $cy, "" );
+        } else {
+            $self->editorInsertRow( $cy + 1, $rows[$cy] );
+        }
+        $cy++;
+        $cx = 0;
     }
 
     ## -------------------------------------------------------------------------
@@ -313,7 +324,7 @@ class Editor {
         my $c = $self->editorReadKey();
 
         if ($c eq "\r") {
-            ; # do nothing ... for now
+            $self->editorInsertNewline;
         }
         elsif ($c eq CTRL_KEY('q')) {
             $self->appendBuffer( "\e[2J" );
