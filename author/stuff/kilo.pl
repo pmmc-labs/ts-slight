@@ -43,9 +43,6 @@ class Editor {
     field $status_msg  :reader = '';
     field $status_time :reader = 0;
 
-    field $error_msg    :reader = '';
-    field $error_reason :reader = undef;
-
     ## -------------------------------------------------------------------------
 
     method initEditor {
@@ -110,11 +107,6 @@ class Editor {
     method editorSetStatusMessage ($msg) {
         $status_msg  = $msg;
         $status_time = time();
-    }
-
-    method editorSetErrorMessage ($msg, $reason) {
-        $error_msg    = $msg;
-        $error_reason = $reason;
     }
 
     ## -------------------------------------------------------------------------
@@ -210,7 +202,8 @@ class Editor {
         if ($cx == 0) {
             $self->editorInsertRow( $cy, "" );
         } else {
-            $self->editorInsertRow( $cy + 1, $rows[$cy] );
+            my $rest = substr( $rows[$cy], $cx, length($rows[$cy]), '' );
+            $self->editorInsertRow( $cy + 1, $rest );
         }
         $cy++;
         $cx = 0;
