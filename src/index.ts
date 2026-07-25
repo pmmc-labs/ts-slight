@@ -1,10 +1,11 @@
-import { readFileSync }   from 'node:fs';
+import { readFileSync }                     from 'node:fs';
 import { PerformanceObserver, performance } from 'node:perf_hooks';
-import { DEBUG }          from './debug.ts';
-import { parse }          from './parser.ts';
-import { expand }         from './reader.ts';
-import { initalizeEnv }   from './builtins.ts';
-import { Strand }         from './strand.ts';
+import { DEBUG }                            from './debug.ts';
+import { parse }                            from './parser.ts';
+import { expand }                           from './reader.ts';
+import { initalizeEnv }                     from './builtins.ts';
+import { applyDefaultExtensions }           from './extensions.ts';
+import { Strand }                           from './strand.ts';
 import {
     newMapEnv, bind,
     sym, list, str, num,
@@ -16,6 +17,7 @@ export * from './terms.ts';
 export * from './parser.ts';
 export * from './reader.ts';
 export * from './builtins.ts';
+export * from './extensions.ts';
 export * from './syscalls.ts';
 export * from './konts.ts';
 export * from './strand.ts';
@@ -44,6 +46,7 @@ export async function main () {
     let env = newMapEnv();
     env = bind( sym('@ARGV'), list( ...process.argv.slice(3).map((arg) => !isNaN(Number(arg)) ? num(parseInt(arg)) : str(arg)) ), env );
     env = initalizeEnv( env );
+    env = applyDefaultExtensions( env );
 
     let strand = new Strand();
 
@@ -114,7 +117,8 @@ export async function prove (test_source : string) {
 
     let exprs = expand(parse(source));
     if (DEBUG) console.log("Test Parsed: ", exprs.map(pprint));
-    let env = initalizeEnv();
+    let env = applyDefaultExtensions( initalizeEnv() );
+
     let strand = new Strand();
     console.time('tests');
     let halted = await strand.run(exprs, env);

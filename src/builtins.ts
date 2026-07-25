@@ -131,12 +131,6 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     let env : MapEnv = newMapEnv( core );
 
     // -------------------------------------------------------------------------
-    // Constants
-    // -------------------------------------------------------------------------
-
-    env = bind( sym('PI'), num(Math.PI), env );
-
-    // -------------------------------------------------------------------------
     // Maths
     // -------------------------------------------------------------------------
 
@@ -147,6 +141,9 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('/'), liftNumBinOp('/', (n, m) => n / m), env );
     env = bind( sym('%'), liftNumBinOp('%', (n, m) => n % m), env );
 
+    // XXX:
+    // consider moving these (or subset of these) into a Math extension
+    env = bind( sym('PI'), num(Math.PI), env );
     env = bind( sym('max'), liftNumBinOp('max', (n, m) => Math.max(n, m)), env );
     env = bind( sym('min'), liftNumBinOp('min', (n, m) => Math.min(n, m)), env );
     env = bind( sym('pow'), liftNumBinOp('pow', (n, m) => Math.pow(n, m)), env );
@@ -175,6 +172,9 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('uc'),     liftStrUnOp('uc', (s) => s.toUpperCase()), env );
     env = bind( sym('lc'),     liftStrUnOp('lc', (s) => s.toLowerCase()), env );
     env = bind( sym('concat'), liftListOp('concat', (args) => str(uncons(args).map((arg) => isStr(arg) ? arg.value : pprint(arg)).join(''))), env );
+
+    // XXX:
+    // consider moving these (or subset of these) into a Math extension
 
     // searching ...
     env = bind( sym('index-of'), liftBinOp('index-of', (s : TERM, m : TERM) : Num | ERROR => {
@@ -299,46 +299,6 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     let GENSYM_SEQ = 0;
     env = bind( sym('gensym'), liftNulOp('gensym', () => sym(`#:${++GENSYM_SEQ}`)), env );
-
-    // -------------------------------------------------------------------------
-    // .... DEVELOPMENT STUFF .... (not really part of the language)
-    // -------------------------------------------------------------------------
-
-    // NOTE: this is just a place to park this work now
-    // until the I/O system evolves
-    env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
-        if (isNil(args)) return NIL;
-        if (isCons(args.first)) args = args.first;
-        console.log(uncons(args).map((arg) =>
-            isStr(arg) ? arg.value : pprint(arg)
-        ).join(''));
-        return NIL;
-    }), env );
-
-    // immediate mode GUI :P
-    env = bind( sym('poke'), liftBinOp('poke', (char, at) => {
-        let c = (char as Str).value;
-        let [ x, y ] = uncons(at as Cons).map((n) => (n as Num).value);
-        process.stdout.write(`\x1b[s\x1b[${x};${y}H${c}\x1b[u`)
-        return NIL;
-    }), env );
-
-    env = bind( sym('ansi/hide-cursor'), liftNulOp('ansi/hide-cursor', () => {
-        process.stdout.write("\x1b[?25l");
-        process.on('SIGINT', () => { // XXX - kinda gross, but works for now
-            process.stdout.write("\x1b[?25h");
-            process.exit();
-        });
-        return NIL;
-    }), env );
-    env = bind( sym('ansi/show-cursor'), liftNulOp('ansi/show-cursor', () => {
-        process.stdout.write("\x1b[?25h");
-        return NIL;
-    }), env );
-
-    // cheap benchmarking that is probably totally inaccurate
-    env = bind( sym('time-it'),     liftUnOp('time-it',     (t) => { if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);     console.time(t.value);    return NIL; }), env );
-    env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => { if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`); console.timeEnd(t.value); return NIL; }), env );
 
     return env;
 }

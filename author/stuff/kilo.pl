@@ -4,6 +4,45 @@ use v5.42;
 use experimental qw[ class switch ];
 
 ## -----------------------------------------------------------------------------
+=pod
+
+Capabilities needed in Slight:
+
+    Files:
+        - testing file existence
+        - reading
+        - writing
+
+    Terminal
+        - enable/disable RAW mode
+        - escape char
+            - also newline and \r
+        - readkey
+        - terminal dimensions
+        - control chars??
+
+    Misc. Stuff
+        - CRTL_KEY check (using bitwise &)
+        - chr/ord
+        - current time()
+
+Converting to Actors:
+
+    Editor Actor
+        - while (true) is the main actor loop
+            - refresh screen
+            - process keypress
+
+        - setting status message is a message send
+        - reading/writing files are delegated
+
+    FileSystem Actor
+        - read/write files
+        - stuff like that
+
+=cut
+## -----------------------------------------------------------------------------
+
 
 class Editor {
     use Term::ReadKey ();
@@ -22,26 +61,39 @@ class Editor {
 
     sub CTRL_KEY ($k) { chr(ord($k) & 0x1f) }
 
-    field $input  :param :reader = *STDIN;
-    field $output :param :reader = *STDOUT;
+    ## I/O stuff ...
 
-    #field %control_chars :reader;
+    field $input  :reader = *STDIN;
+    field $output :reader = *STDOUT;
+    field $buffer :reader = '';
 
-    field $screen_cols :reader;
-    field $screen_rows :reader;
+    # Cursor stuff ...
 
-    field @rows :reader;
     field $cx   :reader = 0;
     field $cy   :reader = 0;
 
-    field $buffer   :reader = '';
+    # Data stuff ...
+
+    field @rows :reader;
+
+    # ... data rovenance
     field $filename :reader;
 
+    # internal stuff ...
+
+    ## screen size
+    field $screen_cols :reader;
+    field $screen_rows :reader;
+
+    # scrolling
     field $row_offset :reader = 0;
     field $col_offset :reader = 0;
 
+    # status lines
     field $status_msg  :reader = '';
     field $status_time :reader = 0;
+
+    #field %control_chars :reader;
 
     ## -------------------------------------------------------------------------
 
