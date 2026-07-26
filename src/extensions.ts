@@ -22,7 +22,19 @@ export function applyDefaultExtensions (env : MapEnv) : MapEnv {
 }
 
 export function Constants (env : MapEnv) : MapEnv {
-    // ... ???
+
+    env = bind( sym('\n'), str("\n"),   env );
+    env = bind( sym('\r'), str("\r"),   env );
+    env = bind( sym('\e'), str("\x1b"), env );
+
+    env = bind( sym('ansi/home-cursor'),  str("\x1b[H"),    env );
+    env = bind( sym('ansi/hide-cursor'),  str("\x1b[?25l"), env );
+    env = bind( sym('ansi/show-cursor'),  str("\x1b[?25h"), env );
+    env = bind( sym('ansi/invert'),       str("\x1b[7m"),   env );
+    env = bind( sym('ansi/reset'),        str("\x1b[0m"),   env );
+    env = bind( sym('ansi/erase-to-eol'), str("\x1b[K"),    env );
+    env = bind( sym('ansi/erase-screen'), str("\x1b[2J"),   env );
+
     return env;
 }
 

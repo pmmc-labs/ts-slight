@@ -4,6 +4,101 @@
 
 
 ```
+;; stream API idea 
+
+(stream (0 .. 100)
+    (<- (* 10 x))           ;; <- mapper
+    (?- (is-even? x))       ;; ?- predicate
+    (<~ (take 6))           ;; <~ mapper that might terminate the stream
+    (>>                     ;; >> reduction terminator
+        (0 (lambda (acc i) (+ acc i)))))
+
+;; reactive flow
+
+(defun Publisher ()
+    (let msg (recv))
+    (let cmd  (car  msg))
+    (let args (cadr msg))
+    (case cmd
+        (:subscribe
+            )
+        (:unsubscribe
+            )
+        (:submit
+            )
+        (:start
+            )
+        (:close
+            )
+    ))
+
+(defun Operation ()
+    (let msg (recv))
+    (let cmd  (car  msg))
+    (let args (cadr msg))
+    (case cmd
+        (:subscribe
+            )
+        (:unsubscribe
+            )
+        (:submit
+            )
+        (:onSubscribe
+            )
+        (:onUnsubscribe
+            )
+        (:onNext
+            )
+        (:onCompleted
+            )
+        (:onError
+            )
+    ))
+
+(defun Subscription ()
+    (let msg (recv))
+    (let cmd  (car  msg))
+    (let args (cadr msg))
+    (case cmd
+        (:request
+            )
+        (:cancel
+            )
+        (:offer
+            )
+        (:onUnsubscribe
+            )
+        (:onNext
+            )
+        (:onCompleted
+            )
+        (:onError
+            )
+    ))
+
+
+(defun Subscriber ()
+    (let msg (recv))
+    (let cmd  (car  msg))
+    (let args (cadr msg))
+    (case cmd
+        (:onSubscribe
+            )
+        (:onUnsubscribe
+            )
+        (:onNext
+            )
+        (:onCompleted
+            )
+        (:onError
+            )
+    ))
+
+
+```
+
+
+```
 
 ⎛  ████ █        █    ▄   ⎞      ╭──🧠         
 ⎜  █  █ █ ▀      █   ▀█▀  ⎟    ╭─╯╭─🧠                  
