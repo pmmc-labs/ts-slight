@@ -26,17 +26,9 @@ export function applyDefaultExtensions (env : MapEnv) : MapEnv {
 
 export function Constants (env : MapEnv) : MapEnv {
 
-    env = bind( sym('\n'), str("\n"),   env );
-    env = bind( sym('\r'), str("\r"),   env );
-    env = bind( sym('\e'), str("\x1b"), env );
-
-    env = bind( sym('ansi/home-cursor'),  str("\x1b[H"),    env );
-    env = bind( sym('ansi/hide-cursor'),  str("\x1b[?25l"), env );
-    env = bind( sym('ansi/show-cursor'),  str("\x1b[?25h"), env );
-    env = bind( sym('ansi/invert'),       str("\x1b[7m"),   env );
-    env = bind( sym('ansi/reset'),        str("\x1b[0m"),   env );
-    env = bind( sym('ansi/erase-to-eol'), str("\x1b[K"),    env );
-    env = bind( sym('ansi/erase-screen'), str("\x1b[2J"),   env );
+    env = bind( sym("\\n"), str("\n"),   env );
+    env = bind( sym("\\r"), str("\r"),   env );
+    env = bind( sym("\\e"), str("\x1b"), env );
 
     return env;
 }
@@ -75,9 +67,23 @@ export function Terminal (env : MapEnv) : MapEnv {
         return NIL;
     }), env );
 
-
     env = bind( sym('ansi/show-cursor'), liftNulOp('ansi/show-cursor', () => {
         process.stdout.write("\x1b[?25h");
+        return NIL;
+    }), env );
+
+
+    // GOOD STUFF BELOW, above is legacy stuff to be removed
+
+    env = bind( sym('tty/screen/rows'), liftNulOp('tty/screen/rows', () => num( process.stdout.rows )), env );
+    env = bind( sym('tty/screen/cols'), liftNulOp('tty/screen/cols', () => num( process.stdout.columns )), env );
+
+    env = bind( sym('tty/write'), liftListOp('tty/write', (args) => {
+        if (isNil(args)) return NIL;
+        if (isCons(args.first)) args = args.first;
+        process.stdout.write(uncons(args).map((arg) =>
+            isStr(arg) ? arg.value : pprint(arg)
+        ).join(''));
         return NIL;
     }), env );
 
