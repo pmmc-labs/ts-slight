@@ -1,5 +1,6 @@
 import assert from 'node:assert';
-import { keyEventToTerm, uncons, isCons, isStr, isSym, pprint, type TERM } from '../src/index.ts';
+import { readFileSync } from 'node:fs';
+import { keyEventToTerm, uncons, isCons, isStr, isSym, pprint, parse, expand, initalizeEnv, Strand, type TERM } from '../src/index.ts';
 
 // flatten a key-event term into comparable JS shapes:
 // Str "a" -> 's:a', Sym Enter -> 'y:Enter'
@@ -51,6 +52,24 @@ const CASES : Case[] = [
 
 for (const c of CASES) {
     assert.deepEqual( flat(keyEventToTerm(c.s, c.key)), c.want, c.label );
+}
+
+// -- member? (Prelude) --------------------------------------------------------
+{
+    let prelude = readFileSync('./lib/Prelude.slight', 'utf8');
+    let source  = `
+        (list
+            (member? :ctrl (list :ctrl :shift))
+            (member? :alt  (list :ctrl :shift))
+            (member? "a"   (list "a"))
+            (member? :x    ()))
+    `;
+    let exprs   = expand(parse([ prelude, source ].join("\n")));
+    let strand  = new Strand();
+    let results = await strand.run( exprs, initalizeEnv() );
+    let main    = results.find((r) => r.pid.ident == 1);
+    if (main == undefined || main.type != 'HALT') throw new Error('expected member? runner to HALT');
+    assert.equal( pprint(main.result), '(#true #false #true #false)', 'member? truth table' );
 }
 
 console.log('ok - keymap tests passed');

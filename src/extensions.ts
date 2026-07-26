@@ -153,7 +153,7 @@ EVENT_SOURCES.set('keypress', (emit) => {
     process.stdin.resume();
     const onKey = (s : string | undefined, key : readline.Key) => {
         if (key.ctrl && key.name === 'c') { stop(); process.exit(130); }
-        emit( str( s ?? key.name ?? '' ) );
+        emit( keyEventToTerm(s, key) );
     };
     process.stdin.on('keypress', onKey);
     const stop = () => {

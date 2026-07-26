@@ -45,6 +45,11 @@
         (if (f (head lst)) (head lst)
             (find f (tail lst)))))
 
+(defun member? (x lst)
+    (if (nil? lst) #false
+        (if (eq? x (head lst)) #true
+            (member? x (tail lst)))))
+
 (defun range (start end step)
     (if (>= start end)
         (cons end ())
