@@ -103,6 +103,45 @@ export function Benchmarking (env : MapEnv) : MapEnv {
     return env;
 }
 
+// readline key names -> DOM KeyboardEvent.key names; space is handled
+// separately because its DOM key value is the Str " ", not a Sym
+const KEY_NAMES : Map<string, string> = new Map([
+    ['up', 'ArrowUp'], ['down', 'ArrowDown'], ['left', 'ArrowLeft'], ['right', 'ArrowRight'],
+    ['return', 'Enter'], ['escape', 'Escape'], ['backspace', 'Backspace'], ['tab', 'Tab'],
+    ['delete', 'Delete'], ['home', 'Home'], ['end', 'End'],
+    ['pageup', 'PageUp'], ['pagedown', 'PageDown'], ['insert', 'Insert'],
+    ['f1', 'F1'], ['f2', 'F2'], ['f3', 'F3'], ['f4', 'F4'], ['f5', 'F5'], ['f6', 'F6'],
+    ['f7', 'F7'], ['f8', 'F8'], ['f9', 'F9'], ['f10', 'F10'], ['f11', 'F11'], ['f12', 'F12'],
+]);
+
+// (key mods...) -- car is the key: Str for printable chars, Sym with the
+// DOM KeyboardEvent.key name for named keys, :Unidentified when readline
+// can't tell us anything usable; cdr is the modifiers present, in fixed
+// order :ctrl :alt :shift (readline's meta flag is physically Alt)
+export function keyEventToTerm (s : string | undefined, key : readline.Key) : TERM {
+    let name = key.name;
+    let head : TERM;
+    if (name != undefined && KEY_NAMES.has(name)) {
+        head = sym(KEY_NAMES.get(name)!);
+    } else if (name === 'space') {
+        head = str(' ');
+    } else if ((key.ctrl || key.meta) && name != undefined && name.length == 1) {
+        // the sequence is a control byte; the semantic char is the name
+        head = str(name);
+    } else if (s != undefined && s.length == 1 && s >= ' ' && s != '\x7f') {
+        head = str(s);
+    } else if (name != undefined && name.length == 1) {
+        head = str(name);
+    } else {
+        head = sym('Unidentified');
+    }
+    let mods : TERM[] = [];
+    if (key.ctrl)  mods.push(sym('ctrl'));
+    if (key.meta)  mods.push(sym('alt'));
+    if (key.shift) mods.push(sym('shift'));
+    return list( head, ...mods );
+}
+
 // :keypress -- one Str per key ("q", "up", "escape"). Ctrl-C is intercepted:
 // it restores the terminal and exits (raw mode suppresses SIGINT, so without
 // this the script is unkillable from the keyboard). The isTTY guards let
