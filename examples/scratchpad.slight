@@ -1,7 +1,23 @@
 
-(defun tail-call-demo (n)
-    (if (== n 0) 0
-       (tail-call-demo (- n 1))))
+(defun KeyCatcher ()
+    (let key (recv))
+    (case key
+        ("q"   (pprint "goodbye"))
+        (#true
+            (pprint key)
+            (KeyCatcher))))
 
 
-(tail-call-demo 10)
+(let keyboard (connect :keypress (KeyCatcher)))
+
+;; simulate the user typing ...
+(send keyboard "h")
+(send keyboard "e")
+(send keyboard "l")
+(send keyboard "l")
+(send keyboard "o")
+;; simualte the user quitting
+(send keyboard "q")
+
+;; wait for it to exit
+(join keyboard)

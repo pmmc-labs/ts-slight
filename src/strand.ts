@@ -61,9 +61,9 @@ export type ProcessResult =
 
 export class Strand {
     public runqueue : RunQueue = new RunQueue();
-    public halted  : Map<number,ProcessResult> = new Map<number,ProcessResult>();
-    public blocked : Map<string,Process[]> = new Map<string,Process[]>();
-    public procs   : Map<number,Process>   = new Map<number,Process>();
+    public halted   : Map<number,ProcessResult> = new Map<number,ProcessResult>();
+    public blocked  : Map<string,Process[]> = new Map<string,Process[]>();
+    public procs    : Map<number,Process>   = new Map<number,Process>();
 
     private PID_SEQ       = 0;
     private CHAN_SEQ      = 0;
