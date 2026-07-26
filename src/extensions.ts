@@ -1,4 +1,5 @@
 
+import * as readline from 'node:readline';
 import {
     type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR, type Cons,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
@@ -12,6 +13,8 @@ import {
     liftStrUnOp, liftStrBinOp,
     liftLiteralBoolOp,
 } from './builtins.ts';
+
+import { EVENT_SOURCES } from './sources.ts';
 
 export function applyDefaultExtensions (env : MapEnv) : MapEnv {
     env = Constants( env );
@@ -100,5 +103,25 @@ export function Benchmarking (env : MapEnv) : MapEnv {
     return env;
 }
 
-
+// :keypress -- one Str per key ("q", "up", "escape"). Ctrl-C is intercepted:
+// it restores the terminal and exits (raw mode suppresses SIGINT, so without
+// this the script is unkillable from the keyboard). The isTTY guards let
+// piped stdin work (tests, scripted runs). pause() on stop matters: a
+// resumed stdin keeps the node process alive after the scheduler exits.
+EVENT_SOURCES.set('keypress', (emit) => {
+    readline.emitKeypressEvents(process.stdin);
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+    const onKey = (s : string | undefined, key : readline.Key) => {
+        if (key.ctrl && key.name === 'c') { stop(); process.exit(130); }
+        emit( str( s ?? key.name ?? '' ) );
+    };
+    process.stdin.on('keypress', onKey);
+    const stop = () => {
+        process.stdin.off('keypress', onKey);
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
+        process.stdin.pause();
+    };
+    return stop;
+});
 
