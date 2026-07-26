@@ -14,6 +14,7 @@ import {
     Fold, FoldLeft, FoldRight, FoldRightK,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
+import { EVENT_SOURCES } from './sources.ts';
 
 // -----------------------------------------------------------------------------
 
@@ -64,6 +65,7 @@ export class Strand {
     public halted   : Map<number,ProcessResult> = new Map<number,ProcessResult>();
     public blocked  : Map<string,Process[]> = new Map<string,Process[]>();
     public procs    : Map<number,Process>   = new Map<number,Process>();
+    public connections : Map<number, { source : string, stop : () => void }> = new Map();
 
     private PID_SEQ       = 0;
     private CHAN_SEQ      = 0;
@@ -200,6 +202,7 @@ export class Strand {
         }
         this.halted.set( proc.pid.ident, proc_result );
         this.procs.delete( proc.pid.ident );
+        this.stopConnection( proc.pid );
     }
 
     private spawnProcess (exprs : TERM[], env : Env, ppid : Pid | undefined) : Pid {
@@ -220,6 +223,27 @@ export class Strand {
         // push this so it runs immedately
         this.runqueue.push(proc);
         return pid;
+    }
+
+    // validation happens BEFORE spawning: a failed connect leaves no orphan process
+    private connectProcess (source_name : string, exprs : TERM[], env : Env, ppid : Pid) : Pid | ERROR {
+        let source = EVENT_SOURCES.get(source_name);
+        if (source == undefined) return raise(`Unknown event source ':${source_name}'`);
+        for (const conn of this.connections.values()) {
+            if (conn.source == source_name) return raise(`Event source ':${source_name}' is already connected`);
+        }
+        let pid  = this.spawnProcess( exprs, env, ppid );
+        let stop = source((term) => this.sendMessage(pid, term));
+        this.connections.set( pid.ident, { source : source_name, stop } );
+        return pid;
+    }
+
+    private stopConnection (pid : Pid) : boolean {
+        let conn = this.connections.get(pid.ident);
+        if (conn == undefined) return false;
+        conn.stop();
+        this.connections.delete(pid.ident);
+        return true;
     }
 
     private park (proc : Process) : void {
@@ -302,24 +326,29 @@ export class Strand {
         let init_pid = this.spawnInitProcess( exprs, env );
 
         let hop_every = 25;
-        while (true) {
-            if (this.runqueue.hasWork()) {
-                let proc = this.runqueue.pop()!;
-                this.DISPATCH_SEQ++;
-                if (DEBUG) LOG(`>>>> : Switching to ${ pprint(proc.pid) }`);
-                this.step(proc, this.DEFAULT_QUOTA);
-                this.park(proc);
-                if (this.inflight > 0 && --hop_every <= 0) {
-                    await this.hop();
-                    hop_every = 25;
+        try {
+            while (true) {
+                if (this.runqueue.hasWork()) {
+                    let proc = this.runqueue.pop()!;
+                    this.DISPATCH_SEQ++;
+                    if (DEBUG) LOG(`>>>> : Switching to ${ pprint(proc.pid) }`);
+                    this.step(proc, this.DEFAULT_QUOTA);
+                    this.park(proc);
+                    if (this.inflight > 0 && --hop_every <= 0) {
+                        await this.hop();
+                        hop_every = 25;
+                    }
+                } else if (this.inflight > 0 || this.connections.size > 0) {
+                    await this.sleepUntilWoken();
+                } else if (this.blocked.size > 0) {
+                    this.sweepDeadlocked();
+                } else {
+                    break;
                 }
-            } else if (this.inflight > 0) {
-                await this.sleepUntilWoken();
-            } else if (this.blocked.size > 0) {
-                this.sweepDeadlocked();
-            } else {
-                break;
             }
+        } finally {
+            for (const conn of this.connections.values()) conn.stop();
+            this.connections.clear();
         }
         return [ ...this.halted.values() ];
     }
@@ -434,6 +463,19 @@ export class Strand {
                         return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
                     case 'fork':
                         return Return( this.spawnProcess( uncons(tail), kont.env, proc.pid ), kont.env, kont.kont );
+                    case 'connect': {
+                        let [ source_form, ...connect_body ] = uncons(tail);
+                        if (source_form == undefined || !isCons(source_form))
+                            return RaiseError(`connect expects (connect :source <body> ...)`, kont);
+                        let [ q, name ] = uncons(source_form);
+                        if (q == undefined || name == undefined || !isSym(q) || q.ident !== 'quote' || !isSym(name))
+                            return RaiseError(`connect expects a quoted source name, got ${pprint(source_form)}`, kont);
+                        if (connect_body.length == 0)
+                            return RaiseError(`connect expects a body`, kont);
+                        let connect_pid = this.connectProcess( name.ident, connect_body, kont.env, proc.pid );
+                        if (isError(connect_pid)) return ThrowError( connect_pid, kont );
+                        return Return( connect_pid, kont.env, kont.kont );
+                    }
                     case 'join':
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     case 'send':
@@ -459,6 +501,7 @@ export class Strand {
                     case 'quote'   :
                     case 'yield'   :
                     case 'fork'    :
+                    case 'connect' :
                     case 'join'    :
                     case 'send'    :
                     case 'syscall' :

@@ -19,6 +19,7 @@ export * from './reader.ts';
 export * from './builtins.ts';
 export * from './extensions.ts';
 export * from './syscalls.ts';
+export * from './sources.ts';
 export * from './konts.ts';
 export * from './strand.ts';
 
