@@ -10,7 +10,7 @@ import {
     type Kontinue, type WaitFor,
     ThrowError, RaiseError,
     Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
-    Drop, Block, Send, Syscall, Yield, Halt, ScopeExit,
+    Drop, Block, Send, Disconnect, Syscall, Yield, Halt, ScopeExit,
     Fold, FoldLeft, FoldRight, FoldRightK,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
@@ -480,6 +480,8 @@ export class Strand {
                         return EvalExpr( car(tail), kont.env, Block( kont.env, kont.kont ) );
                     case 'send':
                         return EvalArgs( tail, [], kont.env, Send( kont.env, kont.kont ) );
+                    case 'disconnect':
+                        return EvalArgs( tail, [], kont.env, Disconnect( kont.env, kont.kont ) );
                     case 'syscall':
                         return EvalArgs( tail, [], kont.env, Syscall( kont.env, kont.kont ) );
                     }
@@ -504,6 +506,7 @@ export class Strand {
                     case 'connect' :
                     case 'join'    :
                     case 'send'    :
+                    case 'disconnect' :
                     case 'syscall' :
                         return RaiseError(`${head.ident} expects arguments, got none`, kont);
                     }
@@ -599,6 +602,16 @@ export class Strand {
             if (!isPid(send_to)) return RaiseError(`send expects a PID, got ${send_to.type} -> ${pprint(send_to)} `, kont);
             this.sendMessage( send_to, send_msg );
             return Return( send_msg, kont.env, kont.kont );
+        case 'DISCONNECT': {
+            if (returned == undefined) return RaiseError(`Expected args returned to DISCONNECT, got undefined`, kont);
+            if (!isList(returned))     return RaiseError(`Expected args LIST returned to DISCONNECT, got ${pprint(returned)}`, kont);
+            let dis_args = uncons(returned);
+            if (dis_args.length != 1) return RaiseError(`disconnect expects (disconnect <pid>), got ${dis_args.length} args`, kont);
+            let dis_pid = dis_args[0];
+            if (dis_pid == undefined || !isPid(dis_pid)) return RaiseError(`disconnect expects a PID, got ${dis_pid == undefined ? 'undefined' : pprint(dis_pid)}`, kont);
+            if (!this.stopConnection(dis_pid)) return RaiseError(`disconnect: ${pprint(dis_pid)} has no live connection`, kont);
+            return Return( dis_pid, kont.env, kont.kont );
+        }
         case 'SYSCALL':
             if (returned == undefined) return RaiseError(`Expected args returned to SYSCALL, got undefined`, kont);
             if (!isList(returned))     return RaiseError(`Expected args LIST returned to SYSCALL, got ${pprint(returned)}`, kont);

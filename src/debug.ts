@@ -16,6 +16,7 @@ export function TRACE (proc : Process) : void {
     case 'DROP'       :
     case 'COND'       :
     case 'SEND'       :
+    case 'DISCONNECT' :
     case 'SYSCALL'    :
     case 'YIELD'      :
     case 'EVAL'       :
@@ -89,6 +90,7 @@ export function dumpKont (kont : Kontinue) : string {
     case 'COND'       : return `${kont.type}`;
     case 'SCOPE_EXIT' : return `${kont.type} : ${pprint(kont.call)}`;
     case 'SEND'       : return `${kont.type}`;
+    case 'DISCONNECT' : return `${kont.type}`;
     case 'SYSCALL'    : return `${kont.type}`;
     case 'YIELD'      : return `${kont.type}`;
     default:
@@ -115,6 +117,7 @@ export function pprintKont (kont : Kontinue, depth : number) : string {
     case 'COND'       : break;
     case 'SCOPE_EXIT' : kontStr += ` ${pprint(kont.call)}`; break;
     case 'SEND'       : break;
+    case 'DISCONNECT' : break;
     case 'SYSCALL'    : break;
     case 'YIELD'      : break;
     }

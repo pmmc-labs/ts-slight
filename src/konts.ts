@@ -31,13 +31,14 @@ export type FoldRightK = { type : 'FOLD/RIGHT/K', item : TERM, call : CALLABLE }
 
 export type ScopeExit = { type : 'SCOPE_EXIT', call : CALLABLE, args : LIST } & Kontinuation
 
-export type Cond      = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
-export type Send      = { type : 'SEND'       } & Kontinuation
-export type Syscall   = { type : 'SYSCALL'    } & Kontinuation
-export type Drop      = { type : 'DROP'       } & Kontinuation
-export type Err       = { type : 'ERR',   error : ERROR } & Kontinuation
-export type Block     = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
-export type Yield     = { type : 'YIELD' } & Kontinuation
+export type Cond       = { type : 'COND', if_true : MaybeTERM, if_false : MaybeTERM } & Kontinuation
+export type Send       = { type : 'SEND'       } & Kontinuation
+export type Disconnect = { type : 'DISCONNECT' } & Kontinuation
+export type Syscall    = { type : 'SYSCALL'    } & Kontinuation
+export type Drop       = { type : 'DROP'       } & Kontinuation
+export type Err        = { type : 'ERR',   error : ERROR } & Kontinuation
+export type Block      = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
+export type Yield      = { type : 'YIELD' } & Kontinuation
 export type Halt      = { type : 'HALT', result : MaybeTERM, env : Env }
 
 export type Kontinue =
@@ -54,6 +55,7 @@ export type Kontinue =
     | Return
     | Block
     | Send
+    | Disconnect
     | Syscall
     | Yield
     | Halt
@@ -128,6 +130,10 @@ export function Block (env : Env, kont : Kontinue, on : WaitFor | undefined = un
 
 export function Send (env : Env, kont : Kontinue) : Send {
     return { type : 'SEND', env, kont }
+}
+
+export function Disconnect (env : Env, kont : Kontinue) : Disconnect {
+    return { type : 'DISCONNECT', env, kont }
 }
 
 export function Syscall (env : Env, kont : Kontinue) : Syscall {

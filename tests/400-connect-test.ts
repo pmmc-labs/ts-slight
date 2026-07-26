@@ -81,4 +81,37 @@ function scripted (name : string, script : string[], delay_ms : number = 5) : { 
     assert.ok( src.stopped, 'first connection still tore down cleanly' );
 }
 
+// -- disconnect detaches without killing the actor ----------------------------
+{
+    // scripted far in the future: proves stop() cancels pending timers,
+    // because the test would otherwise stall for a second
+    let src = scripted('t5', ['z'], 1000);
+    let { results } = await run(`
+        (defun Sink () (let k (recv)) (if (eq? k "q") :done (Sink)))
+        (let actor (connect :t5 (Sink)))
+        (disconnect actor)
+        (send actor "q")
+        (join actor)
+    `);
+    let main = results.find((r) => r.pid.ident == 1);
+    if (main == undefined || main.type != 'HALT') throw new Error('expected main to HALT');
+    assert.ok( src.stopped, 'disconnect stopped the source' );
+}
+
+// -- disconnect of a pid with no live connection raises -----------------------
+{
+    let { results } = await run(`(disconnect (fork :x))`);
+    let err = results.find((r) => r.type == 'ERR');
+    if (err == undefined || err.type != 'ERR') throw new Error('expected an ERR result');
+    assert.ok( String(err.error.error).includes('no live connection'), 'error names the problem' );
+}
+
+// -- disconnect of a non-pid raises -------------------------------------------
+{
+    let { results } = await run(`(disconnect 42)`);
+    let err = results.find((r) => r.type == 'ERR');
+    if (err == undefined || err.type != 'ERR') throw new Error('expected an ERR result');
+    assert.ok( String(err.error.error).includes('expects a PID'), 'error names the problem' );
+}
+
 console.log('ok - connect tests passed');
