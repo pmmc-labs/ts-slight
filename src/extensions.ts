@@ -105,7 +105,7 @@ export function Benchmarking (env : MapEnv) : MapEnv {
 
 // readline key names -> DOM KeyboardEvent.key names; space is handled
 // separately because its DOM key value is the Str " ", not a Sym
-const KEY_NAMES : Map<string, string> = new Map([
+export const KEY_NAMES : Map<string, string> = new Map([
     ['up', 'ArrowUp'], ['down', 'ArrowDown'], ['left', 'ArrowLeft'], ['right', 'ArrowRight'],
     ['return', 'Enter'], ['escape', 'Escape'], ['backspace', 'Backspace'], ['tab', 'Tab'],
     ['delete', 'Delete'], ['home', 'Home'], ['end', 'End'],
@@ -118,6 +118,9 @@ const KEY_NAMES : Map<string, string> = new Map([
 // DOM KeyboardEvent.key name for named keys, :Unidentified when readline
 // can't tell us anything usable; cdr is the modifiers present, in fixed
 // order :ctrl :alt :shift (readline's meta flag is physically Alt)
+// This function is readline-specific; a browser source maps
+// KeyboardEvent.key directly by the same length-1-code-point rule rather
+// than calling this.
 export function keyEventToTerm (s : string | undefined, key : readline.Key) : TERM {
     let name = key.name;
     let head : TERM;
@@ -125,12 +128,12 @@ export function keyEventToTerm (s : string | undefined, key : readline.Key) : TE
         head = sym(KEY_NAMES.get(name)!);
     } else if (name === 'space') {
         head = str(' ');
-    } else if ((key.ctrl || key.meta) && name != undefined && name.length == 1) {
+    } else if ((key.ctrl || key.meta) && name != undefined && [...name].length == 1) {
         // the sequence is a control byte; the semantic char is the name
         head = str(name);
-    } else if (s != undefined && s.length == 1 && s >= ' ' && s != '\x7f') {
+    } else if (s != undefined && [...s].length == 1 && s >= ' ' && s != '\x7f') {
         head = str(s);
-    } else if (name != undefined && name.length == 1) {
+    } else if (name != undefined && [...name].length == 1) {
         head = str(name);
     } else {
         head = sym('Unidentified');
@@ -142,7 +145,7 @@ export function keyEventToTerm (s : string | undefined, key : readline.Key) : TE
     return list( head, ...mods );
 }
 
-// :keypress -- one Str per key ("q", "up", "escape"). Ctrl-C is intercepted:
+// :keypress -- one key-event list per key (see keyEventToTerm). Ctrl-C is intercepted:
 // it restores the terminal and exits (raw mode suppresses SIGINT, so without
 // this the script is unkillable from the keyboard). The isTTY guards let
 // piped stdin work (tests, scripted runs). pause() on stop matters: a

@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { keyEventToTerm, uncons, isCons, isStr, isSym, pprint, parse, expand, initalizeEnv, Strand, type TERM } from '../src/index.ts';
+import { keyEventToTerm, KEY_NAMES, uncons, isCons, isStr, isSym, pprint, parse, expand, initalizeEnv, Strand, type TERM } from '../src/index.ts';
 
 // flatten a key-event term into comparable JS shapes:
 // Str "a" -> 's:a', Sym Enter -> 'y:Enter'
@@ -38,6 +38,10 @@ const CASES : Case[] = [
     { s : undefined, key : { name : 'insert' },                  want : ['y:Insert'],               label : 'insert -> :Insert' },
     { s : undefined, key : { name : 'f1' },                      want : ['y:F1'],                   label : 'f1 -> :F1' },
     { s : undefined, key : { name : 'f12' },                     want : ['y:F12'],                  label : 'f12 -> :F12' },
+    // astral-plane printable: one code point, not counted as length 2
+    { s : '😀',   key : {},                                      want : ['s:😀'],                    label : 'astral-plane printable char (code point, not UTF-16 length)' },
+    // name-only fallback: no s, unnamed key falls through to name char
+    { s : undefined, key : { name : 'a' },                       want : ['s:a'],                    label : 'name-only fallback char' },
     // modifiers: ctrl'd chars use key.name (sequence is a control byte)
     { s : '\x03', key : { name : 'c', ctrl : true },             want : ['s:c', 'y:ctrl'],          label : 'ctrl+c shape (source intercepts before emit)' },
     { s : '\x01', key : { name : 'a', ctrl : true },             want : ['s:a', 'y:ctrl'],          label : 'ctrl+a' },
@@ -52,6 +56,16 @@ const CASES : Case[] = [
 
 for (const c of CASES) {
     assert.deepEqual( flat(keyEventToTerm(c.s, c.key)), c.want, c.label );
+}
+
+// every named key in KEY_NAMES maps to its DOM name (hand-written rows above
+// document specific sequences; this loop covers the full table)
+for (const [rlname, domname] of KEY_NAMES.entries()) {
+    assert.deepEqual(
+        flat(keyEventToTerm(undefined, { name : rlname })),
+        ['y:' + domname],
+        `KEY_NAMES: ${rlname} -> :${domname}`
+    );
 }
 
 // -- member? (Prelude) --------------------------------------------------------
