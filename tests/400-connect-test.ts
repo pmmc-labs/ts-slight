@@ -114,4 +114,15 @@ function scripted (name : string, script : string[], delay_ms : number = 5) : { 
     assert.ok( String(err.error.error).includes('expects a PID'), 'error names the problem' );
 }
 
+// -- error auto-disconnects, same as halt -------------------------------------
+{
+    let src = scripted('t6', ['x'], 5);
+    let { results } = await run(`
+        (join (connect :t6 (do (recv) (car 99))))
+    `);
+    let actor = results.find((r) => r.pid.ident == 2);
+    if (actor == undefined || actor.type != 'ERR') throw new Error('expected actor to ERR');
+    assert.ok( src.stopped, 'source stopped on actor error (auto-disconnect)' );
+}
+
 console.log('ok - connect tests passed');

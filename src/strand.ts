@@ -233,7 +233,17 @@ export class Strand {
             if (conn.source == source_name) return raise(`Event source ':${source_name}' is already connected`);
         }
         let pid  = this.spawnProcess( exprs, env, ppid );
-        let stop = source((term) => this.sendMessage(pid, term));
+        let stop : () => void;
+        try {
+            // source(...) can throw synchronously; the process is already
+            // spawned and queued, so we must unwind it before raising
+            stop = source((term) => this.sendMessage(pid, term));
+        } catch (e) {
+            this.procs.delete( pid.ident );
+            this.runqueue.front = this.runqueue.front.filter((p) => p.pid.ident != pid.ident);
+            this.runqueue.back  = this.runqueue.back.filter((p) => p.pid.ident != pid.ident);
+            return raise(String(e));
+        }
         this.connections.set( pid.ident, { source : source_name, stop } );
         return pid;
     }
