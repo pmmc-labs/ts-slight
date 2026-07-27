@@ -16,42 +16,47 @@
             (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
             (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col)))))
 
+;; editor commands
 
-(defun apply-row-edit (edit line)
-    (let cursor (car edit))
-    (let cmd    (cadr edit))
-    (let args   (cddr edit))
-    (case cmd
-        (:INSERT
-            (let chr (car args))
-            (str-splice-at line (cursor :col) chr))
-        (:DELETE
-            (str-splice-at line (cursor :col) ()))
-        (#true
-            (raise (concat "Unknown Edit command " cmd)))))
+(defun LineEditor (cursor handler)
+    (lambda (m)
+        (case m
+            (:line-no (cursor :row))
+            (:handler handler))))
+
+(defun InsertCharAt (cursor char)
+    (LineEditor cursor (lambda (line) (str-splice-at line (cursor :col) char))))
+
+(defun DeleteCharAt (cursor)
+    (LineEditor cursor (lambda (line) (str-splice-at line (cursor :col) ()))))
+
+
 
 (defun write-row (line)
     (tty/write line \e "[K" \r \n))
 
-(defun process-rows (screen line-no lines-to-process edit acc)
+
+(defun process-rows (screen line-no lines-to-process edit-cmd acc)
     (if (== (- (screen :rows) line-no) 0) (reverse acc)
         (do
             (let line
                 (if (nil? lines-to-process)
                     "~"
-                (if (nil? edit)
+                (if (nil? edit-cmd)
                     (car lines-to-process)
-                (if (== ((car edit) :row) line-no)
-                    (apply-row-edit edit (car lines-to-process))
+                (if (== (edit-cmd :line-no) line-no)
+                    ((edit-cmd :handler) (car lines-to-process))
                     (car lines-to-process)))))
             (write-row line)
             (process-rows
                 screen
                 (inc line-no)
                 (if (nil? lines-to-process) () (cdr lines-to-process))
-                edit
+                edit-cmd
                 (if (== "~" line) acc (cons line acc))
             ))))
+
+
 
 
 (defun Editor (screen config)
@@ -80,9 +85,9 @@
             (:ArrowRight
                 (list (cursor :moveRight) edited-line-buffer ()))
             (:Backspace
-                (list (cursor :moveLeft) edited-line-buffer (list cursor :DELETE)))
+                (list (cursor :moveLeft) edited-line-buffer (DeleteCharAt cursor)))
             (#true
-                (list (cursor :moveRight) edited-line-buffer (list cursor :INSERT (car key)))
+                (list (cursor :moveRight) edited-line-buffer (InsertCharAt cursor (car key)))
             )))
 )
 
