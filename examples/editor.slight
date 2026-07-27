@@ -1,0 +1,97 @@
+
+
+(defun apply-row-edit (edit line)
+    (let idx  (cadr edit))
+    (let cmd  (car (cddr edit)))
+    (let args (cdr (cddr edit)))
+    (case cmd
+        (:INSERT
+            (let chr (car args))
+            (str-splice line idx chr))
+        (:DELETE
+            (str-splice line idx ()))
+        (#true
+            (raise (concat "Unknown Edit command " cmd)))
+    )
+)
+
+(defun process-rows (screen-rows screen-cols line-no lines-to-process edit acc)
+    (if (== (- screen-rows line-no) 0)
+        (reverse acc)
+        (if (nil? lines-to-process)
+            (do
+                (tty/write "~" \e "[K" \r \n)
+                (process-rows screen-rows screen-cols (inc line-no) () edit acc))
+            (do
+                (let line (if (and (not (nil? edit)) (== (car edit) line-no))
+                            (apply-row-edit edit (car lines-to-process))
+                            (car lines-to-process)))
+                (tty/write line \e "[K" \r \n)
+                (process-rows screen-rows screen-cols (inc line-no) (cdr lines-to-process) edit (cons line acc))))))
+
+
+(defun Editor (h w config)
+    (let cx          (car config))
+    (let cy          (cadr config))
+    (let line-buffer (car  (cddr config)))
+    (let edit        (cadr (cddr config)))
+
+    ;; hide & home cursor
+    (tty/write \e "[?25l" \e "[H")
+    ;; draw the lines
+    (let edited-line-buffer (process-rows (- h 2) w 0 line-buffer edit ()))
+    ;; draw the footer
+    (tty/write \e "[7m" cx "," cy \e "[0m" \r \n )
+    ;; position cursor at cx/cy & show cursor again
+    (tty/write  \e "[" (+ cy 1) ";" (+ cx 1) "H" \e "[?25h")
+
+    (let key (recv))
+    (Editor h w
+        (case (car key)
+            (:ArrowUp
+                (list cx (dec cy) edited-line-buffer ()))
+            (:ArrowDown
+                (list cx (inc cy) edited-line-buffer ()))
+            (:ArrowLeft
+                (list (dec cx) cy edited-line-buffer ()))
+            (:ArrowRight
+                (list (inc cx) cy edited-line-buffer ()))
+            (:Backspace
+                (list (dec cx) cy edited-line-buffer (list cy cx :DELETE)))
+            (#true
+                (list (inc cx) cy edited-line-buffer (list cy cx :INSERT (car key)))
+            )))
+)
+
+
+(let editor (connect
+    :keypress
+        (Editor
+            (tty/screen/rows)
+            (tty/screen/cols)
+            (list
+                0
+                0
+                (list
+                    "line 1"
+                    "line 2 ... this is the second line"
+                    "line 3"
+                    "line 4"
+                    "line 5 ... look 5 lines now"
+                    "line 6"
+                    "line 7"
+                    "line 8 ... this is the last line"
+                )
+                ()
+            )
+        )
+    )
+)
+
+
+
+
+
+(join editor)
+
+

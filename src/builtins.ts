@@ -1,6 +1,8 @@
 
 import {
-    type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR, type Cons,
+    type TERM, type LIST, type MapEnv, type Builtin,
+    type Num, type Str, type Sym, type Bool, type ERROR,
+    type Cons, type LITERAL,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
     TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
@@ -163,6 +165,13 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     env = bind( sym('rand'), liftNumUnOp('rand', (n) => Math.floor(Math.random() * n)), env );
 
+    env = bind( sym('format-num'), liftListOp('format-num', (args) => {
+        let [ n, w, c ] = uncons(args).map((e) => (e as LITERAL).value);
+        if (n == undefined || w == undefined) return raise(`ARITY-ERROR: You must supply at least a number and a width`);
+        if (c == undefined) c = ' ';
+        return str(n.toString().padStart(w as number, c as string));
+    }), env );
+
     // -------------------------------------------------------------------------
     // Strings
     // -------------------------------------------------------------------------
@@ -174,7 +183,23 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('concat'), liftListOp('concat', (args) => str(uncons(args).map((arg) => isStr(arg) ? arg.value : pprint(arg)).join(''))), env );
 
     // XXX:
-    // consider moving these (or subset of these) into a Math extension
+    // consider moving these (or subset of these) into a String extension
+
+    env = bind( sym('str-splice'), liftListOp('str-splice', (args) : Str | ERROR => {
+        let [ s, i, c ] = uncons(args);
+        if (s == undefined || !isStr(s)) return raise(`TYPE-ERROR! - (str-splice) expected Str for the first arg, got  (${s == undefined ? 'UNDEF' : s.type})`);
+        if (i == undefined || !isNum(i)) return raise(`TYPE-ERROR! - (str-splice) expected Num for the second arg, got (${i == undefined ? 'UNDEF' : i.type})`);
+        if (c == undefined) return raise(`TYPE-ERROR! - (str-splice) expected Str | Nil for the third arg, got (UNDEF)`);
+        if (isStr(c)) {
+            return str( s.value.slice(0, i.value) + c.value + s.value.slice(i.value) )
+        }
+        else if (isNil(c)) {
+            return str( s.value.slice(0, (i.value - 1)) + s.value.slice(i.value) )
+        }
+        else {
+            return raise(`TYPE-ERROR! - (str-splice) expected Str | Nil for the third arg, got  (${c == undefined ? 'UNDEF' : c.type})`);
+        }
+    }), env );
 
     // searching ...
     env = bind( sym('index-of'), liftBinOp('index-of', (s : TERM, m : TERM) : Num | ERROR => {
