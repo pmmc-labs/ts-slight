@@ -1,0 +1,126 @@
+(defun Cursor (row col max-row max-col)
+    (lambda (m)
+        (case m
+            (:vert-pos (inc row))
+            (:horz-pos (inc col))
+            (:row row)
+            (:col col)
+            (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
+            (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
+            (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
+            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col)))))
+
+(defun Screen (rows cols)
+    (let default-line (concat \e "[2m~" \e "[0m"))
+    (let gutter-width 6) ;; fixed for now
+
+    (let render-lines (lambda (count offset lines)
+        (when (< count rows)
+            (tty/write ;; format gutter w/ line numbers
+                \e "[2m" (format-num (inc (+ count offset)) 3 "0") " :" \e "[0m" " "
+                (if (nil? lines) default-line (car lines)) \e "[K" \r \n)
+            (render-lines (inc count) offset (if (nil? lines) lines (cdr lines))))))
+
+    (lambda (m args)
+        (case m
+            (:rows rows)
+            (:cols cols)
+
+            (:makeCursor
+                (Cursor 0 0 (dec rows) (dec cols)))
+
+            (:refresh
+                (let cursor (car  args))
+                (let lines  (cadr args))
+                (let offset (car (cddr args)))
+                ;; hide and home cursor
+                (tty/write \e "[?25l" \e "[H")
+                ;; render lines ...
+                (render-lines 0 offset (skip offset lines))
+                ;; draw the footer
+                (tty/write \e "[7m" (+ (cursor :vert-pos) offset) "," (cursor :horz-pos) " ... (" (cursor :vert-pos) " + " offset ")" \e "[0m" \e "[K" \r \n )
+                ;; position cursor at cx/cy & show cursor again
+                (tty/write  \e "[" (cursor :vert-pos) ";" (+ gutter-width (cursor :horz-pos)) "H" \e "[?25h")
+            )
+        )
+    )
+)
+
+(defun scroll-up (cursor line-offset)
+    (if (and (== (cursor :vert-pos) 1)
+             (>  line-offset        0))
+                (dec line-offset)
+                line-offset))
+
+(defun scroll-down (screen cursor lines line-offset)
+    (if (and (== (cursor :vert-pos) (screen :rows ()))
+             (<  (+ (cursor :vert-pos) line-offset) (length lines)))
+                (inc line-offset)
+                line-offset))
+
+(defun Editor (screen cursor lines line-offset)
+    (screen :refresh (list cursor lines line-offset))
+    (let key (recv))
+    (case (car key)
+        (:ArrowLeft  (Editor screen (cursor :moveLeft)  lines line-offset))
+        (:ArrowRight (Editor screen (cursor :moveRight) lines line-offset))
+        (:ArrowUp    (Editor screen (cursor :moveUp)    lines (scroll-up   cursor line-offset)))
+        (:ArrowDown  (Editor screen (cursor :moveDown)  lines (scroll-down screen cursor lines line-offset)))
+        (:Enter
+            (let updated
+                (append
+                    (take (+ (cursor :vert-pos) line-offset) lines)
+                    (cons "..."
+                        (skip (+ (cursor :vert-pos) line-offset) lines))))
+            (Editor screen (cursor :moveDown) updated (scroll-down screen cursor updated line-offset))
+        )
+        (#true
+            (raise (list :TODO key))
+        )
+    )
+)
+
+(let screen (Screen 20 60))
+(let cursor (screen :makeCursor ()))
+(let lines (list
+        "line 1"
+        "line 2"
+        "line 3"
+        "line 4"
+        "line 5"
+        "line 6"
+        "line 7"
+        "line 8"
+        "line 9"
+        "line 10"
+        "line 11"
+        "line 12"
+        "line 13"
+        "line 14"
+        "line 15"
+        "line 16"
+        "line 17"
+        "line 18"
+        "line 19"
+        "line 20"
+        "line 21"
+        "line 22"
+        "line 23"
+        "line 24"
+        "line 25"
+        "line 26"
+        "line 27"
+        "line 28"
+        "line 29"
+        "line 30"
+    )
+)
+
+(let editor (connect :keypress (Editor screen cursor lines 5)))
+
+(join editor)
+
+
+
+
+

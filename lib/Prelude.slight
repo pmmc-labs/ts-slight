@@ -43,6 +43,10 @@
     (if (== n 0) lst
         (skip (dec n) (cdr lst))))
 
+(defun take (n lst)
+    (if (== n 0) ()
+        (cons (car lst) (take (dec n) (cdr lst)))))
+
 (defun nth (i lst)
     (if (nil? lst) ()
         (if (== i 0)
