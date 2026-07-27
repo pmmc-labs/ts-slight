@@ -17,7 +17,12 @@
     (fold/l 0 (lambda (acc x) (inc acc)) lst))
 
 (defun reverse (lst)
-    (fold/l () (lambda (acc x) (cons x acc)) lst))
+    (when (not (nil? lst)) (fold/l () (lambda (acc x) (cons x acc)) lst)))
+
+(defun append (lhs rhs)
+    (if (nil? lhs) rhs
+    (if (nil? rhs) lhs
+        (fold/r rhs (lambda (x acc) (cons x acc)) lhs))))
 
 (defun sum (lst)
     (fold/l 0 (lambda (acc n) (+ acc n)) lst))

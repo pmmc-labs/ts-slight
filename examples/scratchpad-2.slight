@@ -1,0 +1,101 @@
+
+(defun Screen (rows cols row col lines-above current-line lines-below)
+    (let line-default "~")
+    (lambda (m)
+        (case m
+            (:rows rows)
+            (:cols cols)
+
+            (:row  row)
+            (:col  col)
+
+            (:line-no      (inc row))
+            (:col-num      (inc col))
+            (:lines-above  lines-above)
+            (:current-line current-line)
+            (:lines-below  lines-below)
+
+            (:allLines
+                (append (reverse lines-above) (cons current-line lines-below)))
+
+            (:atLeftMost?  (== col 0))
+            (:atRightMost? (>= col (str-len current-line)))
+
+            (:moveLeft
+                (Screen rows cols row (dec col) lines-above current-line lines-below))
+            (:moveRight
+                (Screen rows cols row (inc col) lines-above current-line lines-below))
+
+            (:hasPrevLine? (> row 0))
+            (:prevLine
+                (Screen rows cols (dec row) col
+                    (cdr lines-above)
+                    (car lines-above)
+                    (cons current-line lines-below)
+                )
+            )
+
+            (:hasNextLine? (not (nil? lines-below)))
+            (:nextLine
+                (Screen rows cols (inc row) col
+                    (if (nil? lines-below)
+                        (if (eq? current-line line-default)
+                            lines-above
+                            (cons current-line lines-above))
+                        (cons current-line lines-above))
+                    (if (nil? lines-below) line-default (car lines-below))
+                    (if (nil? lines-below) lines-below  (cdr lines-below))
+                )
+            )
+    )))
+
+(defun refreshScreen (rows lines line-no)
+    (when (<= line-no rows)
+            (tty/write
+                (if (nil? lines) "~" (car lines))
+                \e "[K" \r \n)
+            (refreshScreen rows (if (nil? lines) lines (cdr lines)) (inc line-no))))
+
+(defun Editor (screen)
+    (tty/write \e "[?25l" \e "[H")
+    (refreshScreen (screen :rows) (screen :allLines) 1)
+    (tty/write \e "[7m" (screen :line-no) "," (screen :col-num) \e "[0m" \r \n )
+    (tty/write  \e "[" (screen :line-no) ";" (screen :col-num) "H" \e "[?25h")
+
+    (let key (recv))
+    (when (ne? (car key) "q")
+        (Editor
+            (case (car key)
+                (:ArrowUp    (if (screen :hasPrevLine?) (screen :prevLine) screen))
+                (:ArrowDown  (if (screen :hasNextLine?) (screen :nextLine) screen))
+                (:ArrowLeft  (if (screen :atLeftMost?)  screen (screen :moveLeft)))
+                (:ArrowRight (if (screen :atRightMost?) screen (screen :moveRight)))
+                (:Backspace  (raise "TODO"))
+                (#true       (raise "TODO"))
+            )
+        )
+    )
+)
+
+
+(let screen (Screen
+    20
+    20
+    0
+    0
+    ()
+    "this is the first line"
+    (list
+        "this is the second line"
+        "this is the third  line"
+        "this is the fourth line"
+        "this is the fifth  line"
+        "this is the sixth  line"
+    )
+))
+
+(let editor (connect :keypress (Editor screen)))
+
+(join editor)
+
+

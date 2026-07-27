@@ -1,4 +1,6 @@
 
+;; Useful objects
+
 (defun Screen (rows cols)
     (lambda (m)
         (case m
@@ -16,21 +18,22 @@
             (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
             (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col)))))
 
-;; editor commands
 
-(defun LineEditor (cursor handler)
+;; Editor commands
+
+(defun EditCharAt (cursor handler)
     (lambda (m)
         (case m
             (:line-no (cursor :row))
             (:handler handler))))
 
 (defun InsertCharAt (cursor char)
-    (LineEditor cursor (lambda (line) (str-splice-at line (cursor :col) char))))
+    (EditCharAt cursor (lambda (line) (str-splice-at line (cursor :col) char))))
 
 (defun DeleteCharAt (cursor)
-    (LineEditor cursor (lambda (line) (str-splice-at line (cursor :col) ()))))
+    (EditCharAt cursor (lambda (line) (str-splice-at line (cursor :col) ()))))
 
-
+;;
 
 (defun write-row (line)
     (tty/write line \e "[K" \r \n))
@@ -55,9 +58,6 @@
                 edit-cmd
                 (if (== "~" line) acc (cons line acc))
             ))))
-
-
-
 
 (defun Editor (screen config)
     (let cursor      (car config))
