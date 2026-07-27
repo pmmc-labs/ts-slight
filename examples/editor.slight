@@ -1,77 +1,99 @@
 
+(defun Screen (rows cols)
+    (lambda (m)
+        (case m
+            (:rows rows)
+            (:cols cols)
+            (:makeCursor (Cursor 0 0 rows cols)))))
+
+(defun Cursor (row col max-row max-col)
+    (lambda (m)
+        (case m
+            (:row row)
+            (:col col)
+            (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
+            (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
+            (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
+            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col)))))
+
 
 (defun apply-row-edit (edit line)
-    (let idx  (cadr edit))
-    (let cmd  (car (cddr edit)))
-    (let args (cdr (cddr edit)))
+    (let cursor (car edit))
+    (let cmd    (cadr edit))
+    (let args   (cddr edit))
     (case cmd
         (:INSERT
             (let chr (car args))
-            (str-splice line idx chr))
+            (str-splice-at line (cursor :col) chr))
         (:DELETE
-            (str-splice line idx ()))
+            (str-splice-at line (cursor :col) ()))
         (#true
-            (raise (concat "Unknown Edit command " cmd)))
-    )
-)
+            (raise (concat "Unknown Edit command " cmd)))))
 
-(defun process-rows (screen-rows screen-cols line-no lines-to-process edit acc)
-    (if (== (- screen-rows line-no) 0)
-        (reverse acc)
-        (if (nil? lines-to-process)
-            (do
-                (tty/write "~" \e "[K" \r \n)
-                (process-rows screen-rows screen-cols (inc line-no) () edit acc))
-            (do
-                (let line (if (and (not (nil? edit)) (== (car edit) line-no))
-                            (apply-row-edit edit (car lines-to-process))
-                            (car lines-to-process)))
-                (tty/write line \e "[K" \r \n)
-                (process-rows screen-rows screen-cols (inc line-no) (cdr lines-to-process) edit (cons line acc))))))
+(defun write-row (line)
+    (tty/write line \e "[K" \r \n))
+
+(defun process-rows (screen line-no lines-to-process edit acc)
+    (if (== (- (screen :rows) line-no) 0) (reverse acc)
+        (do
+            (let line
+                (if (nil? lines-to-process)
+                    "~"
+                (if (nil? edit)
+                    (car lines-to-process)
+                (if (== ((car edit) :row) line-no)
+                    (apply-row-edit edit (car lines-to-process))
+                    (car lines-to-process)))))
+            (write-row line)
+            (process-rows
+                screen
+                (inc line-no)
+                (if (nil? lines-to-process) () (cdr lines-to-process))
+                edit
+                (if (== "~" line) acc (cons line acc))
+            ))))
 
 
-(defun Editor (h w config)
-    (let cx          (car config))
-    (let cy          (cadr config))
-    (let line-buffer (car  (cddr config)))
-    (let edit        (cadr (cddr config)))
+(defun Editor (screen config)
+    (let cursor      (car config))
+    (let line-buffer (cadr config))
+    (let edit        (car (cddr config)))
 
     ;; hide & home cursor
     (tty/write \e "[?25l" \e "[H")
     ;; draw the lines
-    (let edited-line-buffer (process-rows (- h 2) w 0 line-buffer edit ()))
+    (let edited-line-buffer (process-rows screen 0 line-buffer edit ()))
     ;; draw the footer
-    (tty/write \e "[7m" cx "," cy \e "[0m" \r \n )
+    (tty/write \e "[7m" (cursor :col) "," (cursor :row) \e "[0m" \r \n )
     ;; position cursor at cx/cy & show cursor again
-    (tty/write  \e "[" (+ cy 1) ";" (+ cx 1) "H" \e "[?25h")
+    (tty/write  \e "[" (+ (cursor :row) 1) ";" (+ (cursor :col) 1) "H" \e "[?25h")
 
     (let key (recv))
-    (Editor h w
+    (Editor screen
         (case (car key)
             (:ArrowUp
-                (list cx (dec cy) edited-line-buffer ()))
+                (list (cursor :moveUp) edited-line-buffer ()))
             (:ArrowDown
-                (list cx (inc cy) edited-line-buffer ()))
+                (list (cursor :moveDown) edited-line-buffer ()))
             (:ArrowLeft
-                (list (dec cx) cy edited-line-buffer ()))
+                (list (cursor :moveLeft) edited-line-buffer ()))
             (:ArrowRight
-                (list (inc cx) cy edited-line-buffer ()))
+                (list (cursor :moveRight) edited-line-buffer ()))
             (:Backspace
-                (list (dec cx) cy edited-line-buffer (list cy cx :DELETE)))
+                (list (cursor :moveLeft) edited-line-buffer (list cursor :DELETE)))
             (#true
-                (list (inc cx) cy edited-line-buffer (list cy cx :INSERT (car key)))
+                (list (cursor :moveRight) edited-line-buffer (list cursor :INSERT (car key)))
             )))
 )
 
+(let screen (Screen (- (tty/screen/rows) 2) (dec (tty/screen/cols))))
 
 (let editor (connect
     :keypress
         (Editor
-            (tty/screen/rows)
-            (tty/screen/cols)
+            screen
             (list
-                0
-                0
+                (screen :makeCursor)
                 (list
                     "line 1"
                     "line 2 ... this is the second line"

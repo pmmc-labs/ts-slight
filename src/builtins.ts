@@ -185,19 +185,33 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     // XXX:
     // consider moving these (or subset of these) into a String extension
 
-    env = bind( sym('str-splice'), liftListOp('str-splice', (args) : Str | ERROR => {
+    env = bind( sym('str-splice-at'), liftListOp('str-splice-at', (args) : Str | ERROR => {
         let [ s, i, c ] = uncons(args);
-        if (s == undefined || !isStr(s)) return raise(`TYPE-ERROR! - (str-splice) expected Str for the first arg, got  (${s == undefined ? 'UNDEF' : s.type})`);
-        if (i == undefined || !isNum(i)) return raise(`TYPE-ERROR! - (str-splice) expected Num for the second arg, got (${i == undefined ? 'UNDEF' : i.type})`);
-        if (c == undefined) return raise(`TYPE-ERROR! - (str-splice) expected Str | Nil for the third arg, got (UNDEF)`);
+        if (s == undefined || !isStr(s)) return raise(`TYPE-ERROR! - (str-splice-at) expected Str for the first arg, got  (${s == undefined ? 'UNDEF' : s.type})`);
+        if (i == undefined || !isNum(i)) return raise(`TYPE-ERROR! - (str-splice-at) expected Num for the second arg, got (${i == undefined ? 'UNDEF' : i.type})`);
+        if (c == undefined) return raise(`TYPE-ERROR! - (str-splice-at) expected Str | Nil for the third arg, got (UNDEF)`);
+        let to_splice = s.value;
+        let idx       = i.value;
         if (isStr(c)) {
-            return str( s.value.slice(0, i.value) + c.value + s.value.slice(i.value) )
+            if (idx < to_splice.length) {
+                return str( to_splice.slice(0, idx) + c.value + to_splice.slice(idx) )
+            } else if (idx == to_splice.length) {
+                return str( to_splice + c.value );
+            } else {
+                return str( to_splice + (" ".repeat(idx - to_splice.length)) + c.value );
+            }
         }
         else if (isNil(c)) {
-            return str( s.value.slice(0, (i.value - 1)) + s.value.slice(i.value) )
+            if (idx < to_splice.length) {
+                return str( to_splice.slice(0, (idx - 1)) + to_splice.slice(idx) )
+            } else if (idx == to_splice.length) {
+                return str( to_splice.slice(0, (idx - 1)) )
+            } else {
+                return s;
+            }
         }
         else {
-            return raise(`TYPE-ERROR! - (str-splice) expected Str | Nil for the third arg, got  (${c == undefined ? 'UNDEF' : c.type})`);
+            return raise(`TYPE-ERROR! - (str-splice-at) expected Str | Nil for the third arg, got  (${c == undefined ? 'UNDEF' : c.type})`);
         }
     }), env );
 
