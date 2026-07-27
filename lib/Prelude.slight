@@ -39,6 +39,10 @@
 (defun filter (f lst)
     (fold/r () (lambda (x acc) (if (false? (f x)) (cons x acc) acc)) lst))
 
+(defun skip (n lst)
+    (if (== n 0) lst
+        (skip (dec n) (cdr lst))))
+
 (defun nth (i lst)
     (if (nil? lst) ()
         (if (== i 0)
