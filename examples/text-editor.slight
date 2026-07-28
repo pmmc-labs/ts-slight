@@ -118,6 +118,9 @@
             ("s"
                 (spew path lines)
                 (Editor path screen cursor lines line-offset (concat "File (" path ") saved successfully.")))
+            ("q"
+                (tty/write \e "[2J" \e "[H" \e "[?25h" \n)
+                (tty/write "Goodbye!" \n))
         )
         (case (car key)
             (:SetStatusMessage
@@ -162,11 +165,12 @@
             (list "")
             (str-split (slurp path) \n)))
     (let editor (connect :keypress (Editor path screen cursor lines 0 ())))
-    (send editor (list :SetStatusMessage "Hello World!"))
 
     (let clock (yield (fork (Clock editor))))
 
     (join editor)
+
+    (kill clock)
 )
 
 ;; -----------------------------------------------------------------------------

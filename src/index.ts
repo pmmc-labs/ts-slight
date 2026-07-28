@@ -7,7 +7,7 @@ import { initalizeEnv }                     from './builtins.ts';
 import { applyDefaultExtensions }           from './extensions.ts';
 import { Strand }                           from './strand.ts';
 import {
-    newMapEnv, bind,
+    newMapEnv, bind, isSym,
     sym, list, str, num,
     pprint,
 } from './terms.ts';
@@ -101,9 +101,11 @@ export async function main () {
         if (proc.type == 'HALT') {
             if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
         } else if (proc.type == 'ERR') {
-            console.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
-            proc.trace.forEach((line) => console.log(line));
-            console.groupEnd();
+            if (proc.error.error !== 'KILLED') {
+                console.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+                proc.trace.forEach((line) => console.log(line));
+                console.groupEnd();
+            }
         }
         if (DEBUG) console.groupEnd();
     }
