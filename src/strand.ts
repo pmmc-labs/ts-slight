@@ -156,12 +156,16 @@ export class Strand {
         return sys(args);
     }
 
-    private enqueueProcess (proc : Process) : void {
-        this.runqueue.unshift(proc);
+    private kick () : void {
         if (this.wake != undefined) {
             this.wake();
             this.wake = undefined;
         }
+    }
+
+    private enqueueProcess (proc : Process) : void {
+        this.runqueue.unshift(proc);
+        this.kick();
     }
 
     private hop () : Promise<void> {
@@ -199,13 +203,24 @@ export class Strand {
         if (proc === undefined) {
             if (DEBUG) LOG(`#### : Tried to kill PID ${pprint(pid)} but it was already dead!`);
         } else {
+            let error = raise("KILLED");
             let proc_result : ProcessResult = {
-                type   : 'HALT',
-                result : raise("KILLED"),
-                pid    : proc.pid,
-                steps  : proc.steps
+                type  : 'ERR',
+                error : error,
+                pid   : proc.pid,
+                steps : proc.steps,
+                trace : renderTrace(proc.kont),
             };
-            this.deliverFault( haltKey(proc.pid), proc_result.result as ERROR );
+            // the procs map is just an index: the live reference is wherever
+            // the process is parked, and it must be unparked from there or a
+            // later delivery (mail, halt, syscall) will resurrect it
+            this.runqueue.killPid( pid );
+            for (const [ key, waiters ] of this.blocked) {
+                let kept = waiters.filter((p) => p.pid.ident != pid.ident);
+                if (kept.length == 0) this.blocked.delete(key);
+                else if (kept.length != waiters.length) this.blocked.set(key, kept);
+            }
+            this.deliverFault( haltKey(proc.pid), error );
             this.halted.set( proc.pid.ident, proc_result );
             this.procs.delete( proc.pid.ident );
             this.stopConnection( proc.pid );
@@ -305,9 +320,11 @@ export class Strand {
                 let key = sysKey(++this.SYS_SEQ);
                 this.awaitKey( key, proc );
                 this.inflight++;
+                // kick() even when the waiter was killed and the delivery is a
+                // no-op: the loop must re-check inflight or it sleeps forever
                 this.dispatchSyscall(wait.name, wait.args)
-                    .then((result) => { this.inflight--; this.deliver(key, result); },
-                          (e)      => { this.inflight--; this.deliverFault(key, raise(String(e))); });
+                    .then((result) => { this.inflight--; this.deliver(key, result); this.kick(); },
+                          (e)      => { this.inflight--; this.deliverFault(key, raise(String(e))); this.kick(); });
                 break;
             }
             }
