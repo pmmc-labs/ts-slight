@@ -91,7 +91,9 @@
 
 (defun split-line-at (cursor lines line-pos)
     (let rest (skip line-pos lines))
-    (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col)) (cdr rest))))
+    (if (== (car rest) "")
+        (append (take line-pos lines) (cons "" (skip line-pos lines)))
+        (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col)) (cdr rest)))))
 
 (defun insert-line-at (cursor lines line-pos)
     (append (take line-pos lines) (cons "" (skip line-pos lines))))
@@ -141,8 +143,7 @@
                         (Editor path screen (cursor :moveUp) updated (scroll-down? screen cursor updated line-offset) msg))
                     (do
                         (let updated (delete-char-at cursor lines (+ line-offset (cursor :row))))
-                        (Editor path screen (cursor :moveLeft) updated line-offset msg))
-                )
+                        (Editor path screen (cursor :moveLeft) updated line-offset msg)))
             )
             (#true
                 (let updated (insert-char-at cursor lines (+ line-offset (cursor :row)) (car key)))
@@ -151,11 +152,6 @@
         )
     )
 )
-
-(defun Clock (reply-to)
-    (send reply-to (list :SetStatusMessage (syscall 'localtime ())))
-    (sleep 1000)
-    (yield (Clock reply-to)))
 
 (defun init-editor (path)
     (let screen (Screen (- (tty/screen/rows) 10) (- (tty/screen/cols) 2)))
@@ -166,11 +162,7 @@
             (str-split (slurp path) \n)))
     (let editor (connect :keypress (Editor path screen cursor lines 0 ())))
 
-    (let clock (yield (fork (Clock editor))))
-
     (join editor)
-
-    (kill clock)
 )
 
 ;; -----------------------------------------------------------------------------
