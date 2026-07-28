@@ -37,13 +37,25 @@
             (:refresh
                 (let cursor (car  args))
                 (let lines  (cadr args))
-                (let offset (car (cddr args)))
+                (let offset (car  (cddr args)))
+                (let msg    (cadr (cddr args)))
                 ;; hide and home cursor
                 (tty/write \e "[?25l" \e "[H")
                 ;; render lines ...
                 (render-lines 0 offset (skip offset lines))
                 ;; draw the footer
-                (tty/write \e "[7m" (+ (cursor :vert-pos) offset) "," (cursor :horz-pos) " ... (" (cursor :vert-pos) " + " offset ")" \e "[0m" \e "[K" \r \n )
+                (tty/write
+                        \e "[7;2m"
+                        "  line: "   (format-num (+ (cursor :vert-pos) offset) 2 "0")
+                        ", column: " (format-num (cursor :horz-pos) 2 "0")
+                        " "
+                        "(vert-p: "  (format-num (cursor :vert-pos) 2 "0")
+                        " horz-p: "   (format-num (cursor :horz-pos) 2 "0")
+                        " offset: "   (format-num offset 2 "0")
+                        ") "
+                        (if (nil? msg) "" (concat " –- " msg " "))
+                        \e "[0m" \e "[K" \r \n )
+
                 ;; position cursor at cx/cy & show cursor again
                 (tty/write  \e "[" (cursor :vert-pos) ";" (+ gutter-width (cursor :horz-pos)) "H" \e "[?25h")
             )
@@ -97,52 +109,51 @@
 
 ;; -----------------------------------------------------------------------------
 
-(defun Editor (screen cursor lines line-offset)
-    (screen :refresh (list cursor lines line-offset))
+(defun Editor (path screen cursor lines line-offset msg)
+    (screen :refresh (list cursor lines line-offset msg))
     (let key (recv))
     (if (and (not (nil? (cdr key)))
              (eq? (cadr key) :ctrl))
         (case (car key)
             ("s"
-                (raise "TODO")
-                (Editor screen cursor updated line-offset))
+                (spew path lines)
+                (Editor path screen cursor lines line-offset (concat "File (" path ") saved successfully.")))
         )
         (case (car key)
-            (:ArrowLeft  (Editor screen (cursor :moveLeft)  lines line-offset))
-            (:ArrowRight (Editor screen (cursor :moveRight) lines line-offset))
-            (:ArrowUp    (Editor screen (cursor :moveUp)    lines (scroll-up?   cursor line-offset)))
-            (:ArrowDown  (Editor screen (cursor :moveDown)  lines (scroll-down? screen cursor lines line-offset)))
+            (:ArrowLeft  (Editor path screen (cursor :moveLeft)  lines line-offset ()))
+            (:ArrowRight (Editor path screen (cursor :moveRight) lines line-offset ()))
+            (:ArrowUp    (Editor path screen (cursor :moveUp)    lines (scroll-up?   cursor line-offset) ()))
+            (:ArrowDown  (Editor path screen (cursor :moveDown)  lines (scroll-down? screen cursor lines line-offset) ()))
             (:Enter
                 (let updated (add-newline cursor lines (+ line-offset (cursor :row))))
-                (Editor screen (cursor :lineBreak) updated (scroll-down? screen cursor updated line-offset))
+                (Editor path screen (cursor :lineBreak) updated (scroll-down? screen cursor updated line-offset) ())
             )
             (:Backspace
                 (if (== 0 (cursor :col))
                     (do
                         (let updated (remove-newline cursor lines (+ line-offset (cursor :row))))
-                        (Editor screen (cursor :moveUp) updated (scroll-down? screen cursor updated line-offset)))
+                        (Editor path screen (cursor :moveUp) updated (scroll-down? screen cursor updated line-offset) ()))
                     (do
                         (let updated (delete-char-at cursor lines (+ line-offset (cursor :row))))
-                        (Editor screen (cursor :moveLeft) updated line-offset)))
+                        (Editor path screen (cursor :moveLeft) updated line-offset ())))
             )
             (#true
                 (let updated (insert-char-at cursor lines (+ line-offset (cursor :row)) (car key)))
-                (Editor screen (cursor :moveRight) updated line-offset)
+                (Editor path screen (cursor :moveRight) updated line-offset ())
             )
         )
     )
 )
 
 (defun init-editor (path)
-    (let screen (Screen (- (tty/screen/rows) 2) (- (tty/screen/cols) 2)))
+    (let screen (Screen (- (tty/screen/rows) 10) (- (tty/screen/cols) 2)))
     (let cursor (screen  :makeCursor ()))
     (let lines
         (if (nil? path)
             (list "")
             (str-split (slurp path) \n)))
-    (let editor (connect :keypress (Editor screen cursor lines 0)))
-    (join editor)
-)
+    (let editor (connect :keypress (Editor path screen cursor lines 0 ())))
+    (join editor))
 
 ;; -----------------------------------------------------------------------------
 

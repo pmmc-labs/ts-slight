@@ -4,8 +4,8 @@ import * as fs from "node:fs/promises"
 import {
     type TERM,
     TRUE, FALSE, NIL,
-    isNum, isStr,
-    str,
+    isNum, isStr, isList, isCons, isLiteral,
+    str, pprint, uncons,
 } from './terms.ts';
 
 // -----------------------------------------------------------------------------
@@ -32,9 +32,15 @@ SYSCALLS.set('spew', (args : TERM[]) : Promise<TERM> => {
     let path = args[0];
     let data = args[1];
     if (path == undefined || !isStr(path)) return Promise.reject(`slurp expects first arg to be a string (path : STR)`);
-    if (data == undefined || !isStr(data)) return Promise.reject(`slurp expects second arg to be a string (data : STR)`);
+    if (data == undefined || !(isStr(data) || isList(data)) ) return Promise.reject(`slurp expects second arg to be a string or list (data : STR | LIST)`);
+    let contents = "";
+    if (isStr(data)) {
+        contents = data.value;
+    } else if (isList(data) && isCons(data)) {
+        contents = uncons(data).map((t) => (isLiteral(t) ? t.value : pprint(t))).join("\n");
+    }
     return new Promise((resolve) =>
-        fs.writeFile( path.value, data.value, { encoding: 'utf8' } )
-            .then((success) => (success == undefined) ? TRUE : FALSE)
+        fs.writeFile( path.value, contents, { encoding: 'utf8' } )
+            .then((success) => resolve(success == undefined ? TRUE : FALSE))
     );
 });
