@@ -1,5 +1,16 @@
 
 
-(defun echo () (pprint (recv)) (echo))
+(defun Clock ()
+    (tty/write (syscall 'localtime ()) \r)
+    (sleep 1000)
+    (yield (Clock)))
 
-(join (connect :keypress (echo)))
+
+(tty/write "START: " (syscall 'localtime ()) \n)
+
+(let clock (yield (fork (Clock))))
+
+(tty/write "FORKED: " clock \n)
+(sleep 5000)
+(tty/write \n "AWAKE!, ... killing " clock \n)
+(tty/write \n "ALL DONE! >> " (kill clock) \n)

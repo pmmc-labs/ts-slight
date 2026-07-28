@@ -313,6 +313,8 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('true?'),     liftUnOp('true?',     (t) => isBool(t) && t === TRUE  ? TRUE : FALSE), env );
     env = bind( sym('false?'),    liftUnOp('false?',    (t) => isBool(t) && t === FALSE ? TRUE : FALSE), env );
 
+    env = bind( sym('type-of'),   liftUnOp('type-of',   (t) => str(t.type)), env );
+
     // -------------------------------------------------------------------------
     // Booleans
     // -------------------------------------------------------------------------

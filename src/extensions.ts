@@ -14,10 +14,14 @@ import {
     liftLiteralBoolOp,
 } from './builtins.ts';
 
+import { parse }  from './parser.ts';
+import { expand } from './reader.ts';
+
 import { EVENT_SOURCES } from './sources.ts';
 
 export function applyDefaultExtensions (env : MapEnv) : MapEnv {
     env = Constants( env );
+    env = Slight( env );
     env = IO( env );
     env = Terminal( env );
     env = Benchmarking( env );
@@ -29,6 +33,22 @@ export function Constants (env : MapEnv) : MapEnv {
     env = bind( sym("\\n"), str("\n"),   env );
     env = bind( sym("\\r"), str("\r"),   env );
     env = bind( sym("\\e"), str("\x1b"), env );
+
+    return env;
+}
+
+export function Slight (env : MapEnv) : MapEnv {
+
+    env = bind( sym('slight/parse'), liftUnOp('slight/parse', (t) => {
+        if (!isStr(t)) return raise(`slight/parse expects a STR source, not ${t.type}`);
+        let exprs = parse( t.value )
+        return exprs[0] as TERM;
+    }), env );
+
+    env = bind( sym('slight/expand'), liftUnOp('slight/expand', (t) => {
+        let exprs = expand( [ t ] )
+        return exprs[0] as TERM;
+    }), env );
 
     return env;
 }

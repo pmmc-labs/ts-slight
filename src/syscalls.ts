@@ -18,6 +18,9 @@ SYSCALLS.set('sleep', (args : TERM[]) : Promise<TERM> => {
     return new Promise((resolve) => setTimeout(() => resolve(ms), ms.value));
 });
 
+SYSCALLS.set('localtime', (args : TERM[]) : Promise<TERM> => {
+    return new Promise((resolve) => resolve(str((new Date()).toUTCString())));
+});
 
 SYSCALLS.set('slurp', (args : TERM[]) : Promise<TERM> => {
     let path = args[0];

@@ -9,9 +9,9 @@ import {
 import {
     type Kontinue, type WaitFor,
     ThrowError, RaiseError,
-    Eval, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
+    Eval, EvalTOS, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
     Drop, Block, Send, Disconnect, Syscall, Yield, Halt, ScopeExit,
-    Fold, FoldLeft, FoldRight, FoldRightK,
+    Fold, FoldLeft, FoldRight, FoldRightK, KillPid,
 } from './konts.ts';
 import { SYSCALLS } from './syscalls.ts';
 import { EVENT_SOURCES } from './sources.ts';
@@ -25,6 +25,12 @@ function sysKey (n : number)        : string { return `sys:${n}`          }
 class RunQueue {
     public front : Process[] = [];
     public back  : Process[] = [];
+
+    killPid (pid : Pid) : Pid {
+        this.front = this.front.filter((proc) => (proc.pid.ident != pid.ident));
+        this.back  = this.back.filter((proc) => (proc.pid.ident != pid.ident));
+        return pid;
+    }
 
     hasWork () : boolean {
         return (this.front.length + this.back.length) > 0;
@@ -185,6 +191,26 @@ export class Strand {
         } else {
             throw new Error(`A halted process should be HALT or ERR`);
         }
+    }
+
+    private killPid (pid : Pid) : Pid {
+        if (DEBUG) LOG(`#### : Killing PID ${pprint(pid)}`);
+        let proc = this.procs.get( pid.ident );
+        if (proc === undefined) {
+            if (DEBUG) LOG(`#### : Tried to kill PID ${pprint(pid)} but it was already dead!`);
+        } else {
+            let proc_result : ProcessResult = {
+                type   : 'HALT',
+                result : raise("KILLED"),
+                pid    : proc.pid,
+                steps  : proc.steps
+            };
+            this.deliverFault( haltKey(proc.pid), proc_result.result as ERROR );
+            this.halted.set( proc.pid.ident, proc_result );
+            this.procs.delete( proc.pid.ident );
+            this.stopConnection( proc.pid );
+        }
+        return pid;
     }
 
     private haltProcess (proc : Process) : void {
@@ -473,6 +499,8 @@ export class Strand {
                         return Yield( kont.env, EvalExpr( car(tail), kont.env, kont.kont ));
                     case 'fork':
                         return Return( this.spawnProcess( uncons(tail), kont.env, proc.pid ), kont.env, kont.kont );
+                    case 'kill':
+                        return EvalExpr( car(tail), kont.env, KillPid( kont.env, kont.kont ));
                     case 'connect': {
                         let [ source_form, ...connect_body ] = uncons(tail);
                         if (source_form == undefined || !isCons(source_form))
@@ -494,6 +522,8 @@ export class Strand {
                         return EvalArgs( tail, [], kont.env, Disconnect( kont.env, kont.kont ) );
                     case 'syscall':
                         return EvalArgs( tail, [], kont.env, Syscall( kont.env, kont.kont ) );
+                    case 'slight/eval':
+                        return EvalExpr( car(tail), kont.env, EvalTOS( kont.env, kont.kont ) );
                     }
                 }
                 // special form with an empty tail: report the arity instead of
@@ -533,6 +563,9 @@ export class Strand {
             default :
                 return Return( kont.expr, kont.env, kont.kont );
             }
+        case 'EVAL_TOS':
+            if (returned == undefined) return RaiseError(`Expected value returned to EVAL_TOS, got undefined`, kont);
+            return Eval( returned, kont.env, kont.kont );
         case 'EVAL_HEAD':
             if (returned == undefined) return RaiseError(`Expected call returned to EVAL_HEAD, got undefined`, kont);
             if (!isCallable(returned)) return RaiseError(`Expected CALLABLE call returned to EVAL_HEAD, got ${pprint(returned)}`, kont);
@@ -632,6 +665,10 @@ export class Strand {
             return Block( kont.env, kont.kont, { target : 'SYSCALL', name : sys_name.ident, args : sys_args } );
         case 'YIELD':
             return kont;
+        case 'KILL':
+            if (returned == undefined) return RaiseError(`Expected args returned to KILL, got undefined`, kont);
+            if (!isPid(returned)) return RaiseError(`Expected PID returned to KILL, got ${pprint(returned)}`, kont);
+            return Return( this.killPid( returned ), kont.env, kont.kont );
         case 'HALT':
             if (returned !== undefined) kont.result = returned;
             return kont;

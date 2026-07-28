@@ -14,6 +14,7 @@ export type WaitFor =
     | { target : 'RECV' }
     | { target : 'SYSCALL', name : string, args : TERM[] }
 
+export type EvalTOS   = { type : 'EVAL_TOS' } & Kontinuation
 export type Eval      = { type : 'EVAL',      expr : TERM                } & Kontinuation
 export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                } & Kontinuation
 export type EvalHead  = { type : 'EVAL_HEAD', args : LIST                } & Kontinuation
@@ -39,10 +40,12 @@ export type Drop       = { type : 'DROP'       } & Kontinuation
 export type Err        = { type : 'ERR',   error : ERROR } & Kontinuation
 export type Block      = { type : 'BLOCK', on : WaitFor | undefined } & Kontinuation
 export type Yield      = { type : 'YIELD' } & Kontinuation
-export type Halt      = { type : 'HALT', result : MaybeTERM, env : Env }
+export type KillPid    = { type : 'KILL' } & Kontinuation
+export type Halt       = { type : 'HALT', result : MaybeTERM, env : Env }
 
 export type Kontinue =
     | Eval
+    | EvalTOS
     | EvalExpr
     | EvalHead
     | EvalArgs
@@ -58,6 +61,7 @@ export type Kontinue =
     | Disconnect
     | Syscall
     | Yield
+    | KillPid
     | Halt
     | Err
     | Define
@@ -74,6 +78,10 @@ export function RaiseError   (error : string, kont : Kontinue) : Err {
 
 export function Eval (expr : TERM, env : Env, kont : Kontinue) : Eval {
     return { type : 'EVAL', expr, env, kont }
+}
+
+export function EvalTOS (env : Env, kont : Kontinue) : EvalTOS {
+    return { type : 'EVAL_TOS', env, kont }
 }
 
 export function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {
@@ -142,6 +150,10 @@ export function Syscall (env : Env, kont : Kontinue) : Syscall {
 
 export function Yield (env : Env, kont : Kontinue) : Yield {
     return { type : 'YIELD', env, kont }
+}
+
+export function KillPid (env : Env, kont : Kontinue) : KillPid {
+    return { type : 'KILL', env, kont }
 }
 
 export function Halt (env : Env, result : TERM | undefined = undefined) : Halt {
