@@ -70,6 +70,11 @@
 (defun insert-char-at (cursor line)
     (str-splice-at line (cursor :col) ()))
 
+
+(defun edit-line-at (cursor lines line-pos)
+    (let rest (skip line-pos lines))
+    (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col)) (cdr rest))))
+
 ;; -----------------------------------------------------------------------------
 
 (defun split-line-at (cursor lines line-pos)
