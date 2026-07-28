@@ -1,4 +1,5 @@
 
 
+(defun echo () (pprint (recv)) (echo))
 
-(str-split (slurp "./lib/Prelude.slight") \n)
+(join (connect :keypress (echo)))
