@@ -3,12 +3,15 @@
         (case m
             (:vert-pos (inc row))
             (:horz-pos (inc col))
+
             (:row row)
             (:col col)
+
             (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
             (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
             (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
             (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
+
             (:lineBreak (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
             )))
 
@@ -64,16 +67,13 @@
 
 ;; -----------------------------------------------------------------------------
 
-(defun insert-char-at (cursor line char)
-    (str-splice-at line (cursor :col) char))
-
-(defun insert-char-at (cursor line)
-    (str-splice-at line (cursor :col) ()))
-
-
-(defun edit-line-at (cursor lines line-pos)
+(defun delete-char-at (cursor lines line-pos)
     (let rest (skip line-pos lines))
-    (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col)) (cdr rest))))
+    (append (take line-pos lines) (cons (str-splice-at (car rest) (cursor :col) ()) (cdr rest))))
+
+(defun insert-char-at (cursor lines line-pos char)
+    (let rest (skip line-pos lines))
+    (append (take line-pos lines) (cons (str-splice-at (car rest) (cursor :col) char) (cdr rest))))
 
 ;; -----------------------------------------------------------------------------
 
@@ -84,10 +84,16 @@
 (defun insert-line-at (cursor lines line-pos)
     (append (take line-pos lines) (cons "" (skip line-pos lines))))
 
-(defun add-newline (cursor lines line-offset)
+(defun add-newline (cursor lines line-pos)
     (if (== 0 (cursor :col))
-        (insert-line-at cursor lines (+ line-offset (cursor :row)))
-        (split-line-at  cursor lines (+ line-offset (cursor :row)))))
+        (insert-line-at cursor lines line-pos)
+        (split-line-at  cursor lines line-pos)))
+
+(defun remove-newline (cursor lines line-pos)
+    (let rest (skip (dec line-pos) lines))
+    (let prev (car rest))
+    (let next (cadr rest))
+    (append (take (dec line-pos) lines) (cons (~ prev next) (cddr rest))))
 
 ;; -----------------------------------------------------------------------------
 
@@ -100,50 +106,31 @@
         (:ArrowUp    (Editor screen (cursor :moveUp)    lines (scroll-up?   cursor line-offset)))
         (:ArrowDown  (Editor screen (cursor :moveDown)  lines (scroll-down? screen cursor lines line-offset)))
         (:Enter
-            (let updated (add-newline cursor lines line-offset))
+            (let updated (add-newline cursor lines (+ line-offset (cursor :row))))
             (Editor screen (cursor :lineBreak) updated (scroll-down? screen cursor updated line-offset))
         )
+        (:Backspace
+            (if (== 0 (cursor :col))
+                (do
+                    (let updated (remove-newline cursor lines (+ line-offset (cursor :row))))
+                    (Editor screen (cursor :moveUp) updated (scroll-down? screen cursor updated line-offset)))
+                (do
+                    (let updated (delete-char-at cursor lines (+ line-offset (cursor :row))))
+                    (Editor screen (cursor :moveLeft) updated line-offset)))
+        )
         (#true
-            (raise (list :TODO key))
+            (let updated (insert-char-at cursor lines (+ line-offset (cursor :row)) (car key)))
+            (Editor screen (cursor :moveRight) updated line-offset)
         )
     )
 )
 
-(let screen (Screen 20 60))
+(let screen (Screen (- (tty/screen/rows) 2) (- (tty/screen/cols) 2)))
 (let cursor (screen :makeCursor ()))
-(let lines (list
-        "line 1"
-        "line 2"
-        "line 3"
-        "line 4"
-        "line 5"
-        "line 6"
-        "line 7"
-        "line 8"
-        "line 9"
-        "line 10"
-        "line 11"
-        "line 12"
-        "line 13"
-        "line 14"
-        "line 15"
-        "line 16"
-        "line 17"
-        "line 18"
-        "line 19"
-        "line 20"
-        "line 21"
-        "line 22"
-        "line 23"
-        "line 24"
-        "line 25"
-        "line 26"
-        "line 27"
-        "line 28"
-        "line 29"
-        "line 30"
-    )
-)
+(let lines
+    (if (nil? @ARGV)
+        (list "")
+        (str-split (slurp (car @ARGV)) \n)))
 
 (let editor (connect :keypress (Editor screen cursor lines 0)))
 
