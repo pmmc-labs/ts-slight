@@ -215,6 +215,13 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
         }
     }), env );
 
+    env = bind( sym('str-split-at'), liftBinOp('str-split-at', (s : TERM, m : TERM) : LIST | ERROR => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (str-split-at) expected Str for the first arg, got (${s.type})`);
+        if (!isNum(m)) return raise(`TYPE-ERROR! - (str-split-at) expected Num for the second arg, got (${m.type})`);
+        if (s.value.length == 0) return NIL;
+        return list( str(s.value.slice(0, m.value)), str(s.value.slice(m.value)) );
+    }), env );
+
     // searching ...
     env = bind( sym('index-of'), liftBinOp('index-of', (s : TERM, m : TERM) : Num | ERROR => {
         if (!isStr(s)) return raise(`TYPE-ERROR! - (index-of) expected Str for the first arg, got (${s.type})`);

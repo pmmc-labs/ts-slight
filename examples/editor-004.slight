@@ -8,7 +8,9 @@
             (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
             (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
             (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
-            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col)))))
+            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
+            (:lineBreak (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
+            )))
 
 (defun Screen (rows cols)
     (let default-line (concat \e "[2m~" \e "[0m"))
@@ -46,17 +48,43 @@
     )
 )
 
-(defun scroll-up (cursor line-offset)
+;; -----------------------------------------------------------------------------
+
+(defun scroll-up? (cursor line-offset)
     (if (and (== (cursor :vert-pos) 1)
              (>  line-offset        0))
                 (dec line-offset)
                 line-offset))
 
-(defun scroll-down (screen cursor lines line-offset)
+(defun scroll-down? (screen cursor lines line-offset)
     (if (and (== (cursor :vert-pos) (screen :rows ()))
              (<  (+ (cursor :vert-pos) line-offset) (length lines)))
                 (inc line-offset)
                 line-offset))
+
+;; -----------------------------------------------------------------------------
+
+(defun insert-char-at (cursor line char)
+    (str-splice-at line (cursor :col) char))
+
+(defun insert-char-at (cursor line)
+    (str-splice-at line (cursor :col) ()))
+
+;; -----------------------------------------------------------------------------
+
+(defun split-line-at (cursor lines line-pos)
+    (let rest (skip line-pos lines))
+    (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col)) (cdr rest))))
+
+(defun insert-line-at (cursor lines line-pos)
+    (append (take line-pos lines) (cons "" (skip line-pos lines))))
+
+(defun add-newline (cursor lines line-offset)
+    (if (== 0 (cursor :col))
+        (insert-line-at cursor lines (+ line-offset (cursor :row)))
+        (split-line-at  cursor lines (+ line-offset (cursor :row)))))
+
+;; -----------------------------------------------------------------------------
 
 (defun Editor (screen cursor lines line-offset)
     (screen :refresh (list cursor lines line-offset))
@@ -64,15 +92,11 @@
     (case (car key)
         (:ArrowLeft  (Editor screen (cursor :moveLeft)  lines line-offset))
         (:ArrowRight (Editor screen (cursor :moveRight) lines line-offset))
-        (:ArrowUp    (Editor screen (cursor :moveUp)    lines (scroll-up   cursor line-offset)))
-        (:ArrowDown  (Editor screen (cursor :moveDown)  lines (scroll-down screen cursor lines line-offset)))
+        (:ArrowUp    (Editor screen (cursor :moveUp)    lines (scroll-up?   cursor line-offset)))
+        (:ArrowDown  (Editor screen (cursor :moveDown)  lines (scroll-down? screen cursor lines line-offset)))
         (:Enter
-            (let updated
-                (append
-                    (take (+ (cursor :vert-pos) line-offset) lines)
-                    (cons "..."
-                        (skip (+ (cursor :vert-pos) line-offset) lines))))
-            (Editor screen (cursor :moveDown) updated (scroll-down screen cursor updated line-offset))
+            (let updated (add-newline cursor lines line-offset))
+            (Editor screen (cursor :lineBreak) updated (scroll-down? screen cursor updated line-offset))
         )
         (#true
             (raise (list :TODO key))
@@ -116,7 +140,7 @@
     )
 )
 
-(let editor (connect :keypress (Editor screen cursor lines 5)))
+(let editor (connect :keypress (Editor screen cursor lines 0)))
 
 (join editor)
 
