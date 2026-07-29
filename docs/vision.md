@@ -285,6 +285,79 @@ session state accumulated across cells is the failure mode. The
 server-loop idiom and the state-rebuilds commitment both push the right
 way.
 
+## What it is for: a personal tool with a merge-request arm
+
+Not corporate software, not an academic artifact — a personal tool whose
+collaborative arm is git's social model: copies go out, merge requests
+come back. The lineage is honorable: git itself began as a personal tool
+with exactly this arm; TiddlyWiki (one human-editable file that is
+document, database, and app); HyperCard (documents-as-apps); the good
+half of Lotus Notes (documents + replication + merge). slight's
+differentiator is merge granularity: those systems merged files or
+records; slight merges hash-consed terms, which is why any byte channel
+works — integrity travels with the data, not the pipe.
+
+**Apps are documents.** A workspace file holds code *and* facts together
+— always together, one human-editable `.slight` file (this sharpens
+commitment 3: facts serialize as slight terms alongside code). A
+self-contained document can be sent; a split one cannot. Disconnected
+storage is another actor owning another file — storage federation is
+actor federation, and everything remains a document. Running the
+document *is* the app; the workspace it runs in can be a local terminal,
+an ssh session, or a browser.
+
+The canonical scenario (and the first real app to build once the
+workspace exists — the artifact is the demo): a party-date wizard sent
+as copies to friends. Each fills it out and returns it — as a merge
+request — by whatever transport exists: email, direct web connection,
+pasted into IRC, USB stick by carrier pigeon. A subscribed actor in the
+host workspace wakes per returned document, merges, detects conflicts,
+proposes resolutions, and sends updated copies back until everyone
+converges.
+
+Recipients participate at three capability levels over the same
+artifact, and one person can move between them freely, re-syncing later:
+
+- **(a) runs slight**: full peer — local evaluation, real sync.
+- **(b) browser link**: the wizard runs off the sender's node; no
+  install, requires connectivity.
+- **(c) plain text**: a non-slight recipient hand-edits the readable
+  file and mails it back; the host's merge actor does all computing.
+  Possible only because documents are human-editable slight text.
+
+**The envelope.** A document's top level is its envelope — still slight
+terms, as human-readable and mergeable as the payload. It carries the
+document's metadata in one place:
+
+- **lineage**: the base root hash this copy descends from — every
+  document is a shallow clone that knows its ancestor;
+- **integrity**: content hashes over the payload;
+- **authorship**: a signature over the payload hash, so "Bob's reply"
+  is checkable (git bolted signing on late; here it is part of the
+  format);
+- **privacy**: the payload may be an encrypted blob inside a readable
+  envelope, when contents warrant it.
+
+A document missing envelope fields degrades to a lower trust level
+rather than becoming invalid. A hand-edited mode-(c) return breaks its
+envelope hashes by definition — so envelope verification tells the merge
+actor which path a document took: verified peer sync, or "re-parse to
+terms, re-hash, three-way merge against the stated base, treat as
+untrusted." That signal is exactly what confinement keys off, and the
+embedded base hash is the mechanism that makes "transport is
+irrelevant" literally true.
+
+Two hard requirements this arm imposes (design-in, not bolt-on):
+
+1. **Authenticity**: hashes give integrity, not authorship; the
+   envelope's signed refs supply the rest.
+2. **Confinement**: a returned document is code-bearing; merging and
+   running it executes someone else's program. Foreign documents run
+   confined by default — evaluated in a strand with an empty or
+   allowlisted syscall table (the syscall boundary makes this real
+   confinement, not sandbox-by-hope), with meta-eval + fuel as the
+   deluxe inspection mode.
+
 ## Design commitments (decisions already made)
 
 1. Late binding through the shared root MENV is the reload mechanism; the
