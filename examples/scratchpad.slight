@@ -20,18 +20,18 @@
             (assoc (car params) (car args) env))))
 
 (defun eval (expr env)
-    (pprint (list :EVAL expr))
+    (pprint (list $$ :EVAL expr))
     (cond
         ((literal? expr)
-            (pprint (list :IS-ATOM expr))
-            expr)
+            (pprint (list $$ :IS-ATOM expr))
+            (yield expr))
         ((sym?  expr)
-            (pprint (list :IS-SYM expr))
+            (pprint (list $$ :IS-SYM expr))
             (let found (lookup expr env))
-                (pprint (list :FOUND? found))
-                found)
+                (pprint (list $$ :FOUND? found))
+                (yield found))
         ((cons? expr)
-            (pprint (list :CALLING expr))
+            (pprint (list $$ :CALLING expr))
             (let call (car expr))
             (let args (cdr expr))
             (case call
@@ -40,20 +40,20 @@
                     (let b (cadr args))
                     (Lambda p b env))
                 (#true
-                    (apply (eval call env) (map (lambda (a) (eval a env)) args) env)))
+                    (yield (apply (eval call env) (map (lambda (a) (eval a env)) args) env))))
         )
     )
 )
 
 (defun apply (call args env)
-    (pprint (list :APPLY (call :class) args ))
+    (pprint (list $$ :APPLY (call :class) args ))
     (case (call :class)
         (:Lambda
-            (pprint (list :CALL-LAMBDA (call :body) args))
-            (eval (call :body) (bind-params (call :params) args (call :env)) ))
+            (pprint (list $$ :CALL-LAMBDA (call :body) args))
+            (yield (eval (call :body) (bind-params (call :params) args (call :env)) )))
         (:Builtin
-            (pprint (list :CALL-BIF (call :body) args))
-            ((call :body) args)
+            (pprint (list $$ :CALL-BIF (call :body) args))
+            (yield ((call :body) args))
         )
     )
 )
@@ -66,4 +66,8 @@
     ()))))
 )
 
-(pprint (eval '((lambda (x y) (+ x y)) 10 20) env))
+(let p1 (fork (eval '((lambda (x y) (+ x y)) 10 20) env)))
+(let p2 (fork (eval '((lambda (x y) (+ x y)) 50 90) env)))
+
+(pprint (join p1))
+(pprint (join p2))
