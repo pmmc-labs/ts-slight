@@ -3,7 +3,8 @@ import {
     type TERM, type LIST, type MapEnv, type Builtin,
     type Num, type Str, type Sym, type Bool, type ERROR,
     type Cons, type LITERAL,
-    isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
+    isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
+    isCallable, isSym, isLambda, isBuiltin,
     TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
@@ -307,11 +308,15 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('atom?'),     liftUnOp('atom?',     (t) => !isList(t)    ? TRUE : FALSE), env );
     env = bind( sym('list?'),     liftUnOp('list?',     (t) => isList(t)     ? TRUE : FALSE), env );
     env = bind( sym('cons?'),     liftUnOp('cons?',     (t) => isCons(t)     ? TRUE : FALSE), env );
+
     env = bind( sym('sym?'),      liftUnOp('sym?',      (t) => isSym(t)      ? TRUE : FALSE), env );
     env = bind( sym('str?'),      liftUnOp('str?',      (t) => isStr(t)      ? TRUE : FALSE), env );
     env = bind( sym('num?'),      liftUnOp('num?',      (t) => isNum(t)      ? TRUE : FALSE), env );
     env = bind( sym('bool?'),     liftUnOp('bool?',     (t) => isBool(t)     ? TRUE : FALSE), env );
     env = bind( sym('literal?'),  liftUnOp('literal?',  (t) => isLiteral(t)  ? TRUE : FALSE), env );
+
+    env = bind( sym('lambda?'),   liftUnOp('lambda?',   (t) => isLambda(t)   ? TRUE : FALSE), env );
+    env = bind( sym('builtin?'),  liftUnOp('builtin?',  (t) => isBuiltin(t)  ? TRUE : FALSE), env );
     env = bind( sym('callable?'), liftUnOp('callable?', (t) => isCallable(t) ? TRUE : FALSE), env );
 
     env = bind( sym('true?'),     liftUnOp('true?',     (t) => isBool(t) && t === TRUE  ? TRUE : FALSE), env );
