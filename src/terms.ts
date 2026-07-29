@@ -1,4 +1,6 @@
 
+import { inspect } from "node:util"
+
 export type LITERAL  = Bool | Str | Num
 export type LIST     = Cons | Nil
 export type CALLABLE = Lambda | Builtin
@@ -15,11 +17,11 @@ export type Bool     = { type : 'BOOL',  value : boolean }
 export type ERROR    = { type : 'ERROR', error : any }
 
 export type RibNode  = { name : string, value : TERM, next : RibNode | undefined }
-export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined }
-export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
+export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined, [inspect.custom] : () => any }
+export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env, [inspect.custom] : () => any }
 export type Env      = MapEnv | RibEnv
 
-export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env, name : Sym | undefined }
+export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env, name : Sym | undefined, [inspect.custom] : () => any }
 export type Builtin  = { type : 'BIF',    params : LIST, body : (args : LIST) => TERM, name : string }
 
 // -----------------------------------------------------------------------------
@@ -92,7 +94,11 @@ export function sym (ident : string) : Sym {
 }
 
 export function lambda (params : LIST, body : TERM, env : Env, name : Sym | undefined = undefined) : Lambda {
-    return { type : 'LAMBDA', params, body, env, name }
+    return { type : 'LAMBDA', params, body, env, name,
+        [inspect.custom] : () => {
+            return { type : 'LAMBDA', name, params, body }
+        }
+     }
 }
 
 export function raise (error : any) : ERROR {
@@ -125,11 +131,15 @@ export function cddr (list : Cons) : LIST | ERROR {
 // env stuff ...
 
 export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
-    return { type : 'MENV', bindings : new Map<string,TERM>(), parent }
+    return { type : 'MENV', bindings : new Map<string,TERM>(), parent,
+        [inspect.custom] : () => { return { type : 'MENV' } }
+    }
 }
 
 export function newRibEnv (parent : Env) : RibEnv {
-    return { type : 'RENV', head : undefined, parent }
+    return { type : 'RENV', head : undefined, parent,
+        [inspect.custom] : () => { return { type : 'RENV' } }
+    }
 }
 
 // Fork-time snapshot: pins the head of EVERY rib frame down to the
@@ -141,7 +151,14 @@ export function newRibEnv (parent : Env) : RibEnv {
 // run, so they are safe to share as-is.
 export function snapshotEnv (env : Env) : Env {
     if (env.type == 'MENV') return env;
-    return { type : 'RENV', head : env.head, parent : snapshotEnv(env.parent) };
+    return {
+        type   : 'RENV',
+        head   : env.head,
+        parent : snapshotEnv(env.parent),
+        [inspect.custom] : () => {
+            return { type : 'RENV', snapeshot : true }
+        }
+    };
 }
 
 // NOTE: mutates env in place -- MENV overwrites the Map entry, RENV
@@ -185,7 +202,7 @@ export function bindParams (params : LIST, args : LIST, env : Env) : RibEnv | ER
         args   = args.rest;
     }
     if (args !== NIL) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
-    return { type : 'RENV', head, parent : env };
+    return { type : 'RENV', head, parent : env, [inspect.custom] : () => { return { type : 'RENV' } } };
 }
 
 // ...

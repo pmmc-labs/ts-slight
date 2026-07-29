@@ -432,10 +432,15 @@ export class Strand {
         return proc;
     }
 
+    public TRACE : Kontinue[] = []
+
     kontinue (proc : Process, returned : TERM | undefined = undefined) : Kontinue {
         proc.steps++;
         let kont = proc.kont;
         if (DEBUG) TRACE(proc);
+
+        this.TRACE.push(kont);
+
         switch (kont.type) {
         case 'EVAL':
             return EvalExpr( kont.expr, kont.env, kont.kont );

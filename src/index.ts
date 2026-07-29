@@ -23,6 +23,19 @@ export * from './sources.ts';
 export * from './konts.ts';
 export * from './strand.ts';
 
+import { Console } from 'console';
+
+import { inspect } from "node:util"
+
+export const Logger = new Console({
+    stdout         : process.stdout,
+    stderr         : process.stderr,
+    inspectOptions : {
+        depth       : 20,
+        breakLength : process.stdout.columns - (process.stdout.columns / 4), // 75% of the screen
+    },
+});
+
 function loadPrelude () {
     let path = './lib/Prelude.slight';
     let source = readFileSync(path, 'utf8');
@@ -109,6 +122,8 @@ export async function main () {
         }
         if (DEBUG) console.groupEnd();
     }
+
+    //Logger.log(strand.TRACE)
 }
 
 export async function prove (test_source : string) {
