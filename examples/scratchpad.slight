@@ -1,8 +1,20 @@
 
 
 
+(defun eval (expr env)
+    (cond
+        ((sym?  expr) (lookup expr env))
+        ((cons? expr)
+            (let f    (car expr))
+            (let args (cdr expr))
+            (case (car expr)
+                (:+ (+ (eval (car args)) (eval (cadr args))))
+                (:- (- (eval (car args)) (eval (cadr args))))
+                (:* (* (eval (car args)) (eval (cadr args))))
+                (:/ (/ (eval (car args)) (eval (cadr args))))
+            ))
+        (#true
+            expr)
+    )
+)
 
-(defun adder (x y)
-    (+ x y))
-
-(adder 10 20)
