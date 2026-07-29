@@ -41,7 +41,7 @@ const QUICK = [
     { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000',    '100'] },
     { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['10000',   '100'] },
     { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['100000',  '100'] },
-    { name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000000', '100'] },
+    //{ name : 'ring',       file : 'examples/ring-benchmark.slight',   args : ['1000000', '100'] },
 ];
 
 //const QUICK = [
