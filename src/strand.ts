@@ -510,6 +510,17 @@ export class Strand {
                         if (!isCons(rest)) return RaiseError(`let expects (let <name> <value>)`, kont);
                         return EvalExpr( rest.first, kont.env, Define( name, kont.env, kont.kont ));
                     }
+                    case 'defun' : {
+                        let [ name, params, ...body_exprs ] = uncons(tail);
+                        if (name   === undefined) throw new Error(`defun <name> ... duh!`);
+                        if (params === undefined) throw new Error(`defun <name> <params> ... duh!`);
+                        if (body_exprs.length == 0) throw new Error(`defun <name> <params> <body>... duh!`);
+                        if (!isSym(name))    throw new Error(`defun <name> ... duh!`);
+                        if (!isList(params)) throw new Error(`defun <name> <params>... duh!`);
+                        let body = body_exprs.length == 1 ? body_exprs[0] : list(sym('do'), ...body_exprs);
+                        if (body === undefined) throw new Error(`defun <name> <params> ... really shouldnt happen, just typescript being annoying`);
+                        return Return( lambda( params, body, kont.env, name ), kont.env, Define( name, kont.env, kont.kont ));
+                    }
                     case 'quote':
                         return Return( car(tail), kont.env, kont.kont );
                     case 'yield':

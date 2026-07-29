@@ -1,36 +1,34 @@
-(defun Cursor (row col max-row max-col)
-    (lambda (m arg)
-        (case m
-            (:vert-pos (inc row))
-            (:horz-pos (inc col))
-
-            (:row row)
-            (:col col)
-
-            (:calcLinePos (+ arg row))
-
-            (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
-            (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
-            (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
-            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
-
-            (:lineBreak (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
-        )))
 
 ;; -----------------------------------------------------------------------------
 
-(defun Screen (rows cols)
-    (let default-line (concat \e "[2m~" \e "[0m"))
-    (let gutter-width 6) ;; fixed for now
+(defun Cursor (row col max-row max-col)
+    (lambda (m arg)
+        (case m
+            (:row         row)
+            (:col         col)
+            (:vert-pos    (inc row))
+            (:horz-pos    (inc col))
 
-    (let render-lines (lambda (count offset lines default)
+            (:calcLinePos (+ arg row))
+            (:moveUp      (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
+            (:moveDown    (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
+            (:moveLeft    (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
+            (:moveRight   (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
+            (:lineBreak   (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
+        )
+    )
+)
+
+(defun Screen (rows cols)
+
+    (defun render-lines (count offset lines default)
         (when (< count rows)
             (tty/write ;; format gutter w/ line numbers
                 \e "[2m" (format-num (inc (+ count offset)) 3 "0") " :" \e "[0m" " "
                 (if (nil? lines) default (car lines)) \e "[K" \r \n)
-            (render-lines (inc count) offset (if (nil? lines) lines (cdr lines)) default))))
+            (render-lines (inc count) offset (if (nil? lines) lines (cdr lines)) default)))
 
-    (let render-footer (lambda (cursor offset)
+    (defun render-footer (cursor offset)
         (let footer (concat
                 "line: " (format-num (+ (cursor :vert-pos ()) offset) 2 "0")
             ", column: " (format-num (cursor :horz-pos ()) 2 "0")
@@ -41,20 +39,23 @@
             "]"
         ))
         (tty/write \e "[7m" (pad-start footer cols " ")
-                   \e "[0m" \e "[K" \r \n )))
+                   \e "[0m" \e "[K" \r \n ))
 
-    (let render-status-msg (lambda (msg)
+    (defun render-status-msg (msg)
         (tty/write \e "[7m"
             (if (nil? msg) (str-repeat " " cols) (pad-end msg cols " "))
-            \e "[0m" \e "[K" \r \n )))
+            \e "[0m" \e "[K" \r \n ))
 
-    (let lift-cursor (lambda ()
+    (defun lift-cursor ()
         (tty/write \e "[?25l"
-                   \e "[H")))
+                   \e "[H"))
 
-    (let position-cursor (lambda (cursor gutter)
+    (defun position-cursor (cursor gutter)
         (tty/write  \e "[" (cursor :vert-pos ()) ";" (+ gutter (cursor :horz-pos ())) "H"
-                    \e "[?25h")))
+                    \e "[?25h"))
+
+    (let default-line (concat \e "[2m~" \e "[0m"))
+    (let gutter-width 6) ;; fixed for now
 
     (lambda (m args)
         (case m
@@ -110,7 +111,7 @@
     (let rest (skip line-pos lines))
     (if (or (== 0 (cursor :col ())) (== (car rest) ""))
         (append (take line-pos lines) (cons "" rest))
-        (append (take line-pos lines) (cons (str-split-at (car rest) (cursor :col ())) (cdr rest)))))
+        (append (take line-pos lines) (append (str-split-at (car rest) (cursor :col ())) (cdr rest)))))
 
 (defun remove-newline-at (cursor lines line-pos)
     (let rest (skip (dec line-pos) lines))
@@ -175,7 +176,7 @@
 (defun init-editor (path)
     (let cfg (EditorConfig
         path
-        (Screen (- (tty/screen/rows) 10) (- (tty/screen/cols) 2))
+        (Screen (- (tty/screen/rows) 5) (- (tty/screen/cols) 1))
     ))
     (let lines
         (if (nil? path)

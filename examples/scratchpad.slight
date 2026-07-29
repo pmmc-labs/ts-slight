@@ -1,16 +1,2 @@
 
 
-(defun Clock ()
-    (tty/write (syscall 'localtime ()) \r)
-    (sleep 1000)
-    (yield (Clock)))
-
-
-(tty/write "START: " (syscall 'localtime ()) \n)
-
-(let clock (yield (fork (Clock))))
-
-(tty/write "FORKED: " clock \n)
-(sleep 5000)
-(tty/write \n "AWAKE!, ... killing " clock \n)
-(tty/write \n "ALL DONE! >> " (kill clock) \n)
