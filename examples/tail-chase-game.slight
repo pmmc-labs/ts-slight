@@ -1,0 +1,42 @@
+
+
+
+(defun TailChaser (h w x y count to-clear)
+    (tty/write \e "[" x ";" y "H" "@")
+    (tty/write \e "[" (inc h) ";" 0 "H" "steps: " count \r)
+    (tty/write \e "[" (+ h 2) ";" 0 "H" "tails: " (* count 3) \r)
+
+    (when (not (nil? to-clear))
+        (let coord (car to-clear))
+        (fork (do
+            (sleep 1000)
+            (tty/write  \e "[" (car coord) ";" (cadr coord) "H" "*")
+            (tty/write \e "[" (+ h 3) ";" 0 "H" "fade1: " count \r)
+            (sleep 2000)
+            (tty/write  \e "[" (car coord) ";" (cadr coord) "H" ".")
+            (tty/write \e "[" (+ h 4) ";" 0 "H" "fade2: " count \r)
+            (sleep 3000)
+            (tty/write  \e "[" (car coord) ";" (cadr coord) "H" " ")
+            (tty/write \e "[" (+ h 5) ";" 0 "H" "fade3: " count \r)
+        )))
+
+
+    (let key (recv))
+    (case (car key)
+        (:ArrowUp    (TailChaser h w (if (== x 0) x (dec x)) y (inc count) (if (nil? to-clear) (list (list x y)) (cons (list x y) (cdr to-clear)))))
+        (:ArrowDown  (TailChaser h w (if (== x h) x (inc x)) y (inc count) (if (nil? to-clear) (list (list x y)) (cons (list x y) (cdr to-clear)))))
+        (:ArrowLeft  (TailChaser h w x (if (== y 0) y (dec y)) (inc count) (if (nil? to-clear) (list (list x y)) (cons (list x y) (cdr to-clear)))))
+        (:ArrowRight (TailChaser h w x (if (== y w) y (inc y)) (inc count) (if (nil? to-clear) (list (list x y)) (cons (list x y) (cdr to-clear)))))
+        ("q" ())
+    )
+)
+
+(tty/write \e "[?25l")
+(join (connect :keypress (TailChaser
+    40 40
+    10 20
+    0
+    ()
+)))
+(tty/write \e "[?25h")
+

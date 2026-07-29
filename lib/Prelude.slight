@@ -24,6 +24,10 @@
     (if (nil? rhs) lhs
         (fold/r rhs (lambda (x acc) (cons x acc)) lhs))))
 
+(defun concat-list (sep lst)
+    (when (not (nil? lst))
+        (fold/l (car lst) (lambda (acc f) (concat acc sep f)) (cdr lst))))
+
 (defun sum (lst)
     (fold/l 0 (lambda (acc n) (+ acc n)) lst))
 
