@@ -1,4 +1,4 @@
-import { DEBUG, LOG, TRACE, dumpKont, renderTrace } from './debug.ts';
+import { DEBUG, LOG, TRACE, dumpKont, renderTrace, Logger } from './debug.ts';
 import {
     type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
@@ -9,7 +9,8 @@ import {
 import {
     type Kontinue, type WaitFor,
     ThrowError, RaiseError,
-    Eval, EvalTOS, EvalExpr, EvalHead, EvalArgs, Apply, Return, Define, Cond,
+    Eval, EvalTOS, EvalInTopLevel, EvalExpr, EvalHead, EvalArgs,
+    Apply, Return, Define, Cond,
     Drop, Block, Send, Disconnect, Syscall, Yield, Halt, ScopeExit,
     Fold, FoldLeft, FoldRight, FoldRightK, KillPid,
 } from './konts.ts';
@@ -67,11 +68,13 @@ export type ProcessResult =
     | { type : 'ERR',   error : ERROR, pid : Pid, steps : number, trace : string[] }
 
 export class Strand {
-    public runqueue : RunQueue = new RunQueue();
-    public halted   : Map<number,ProcessResult> = new Map<number,ProcessResult>();
-    public blocked  : Map<string,Process[]> = new Map<string,Process[]>();
-    public procs    : Map<number,Process>   = new Map<number,Process>();
+    public runqueue    : RunQueue = new RunQueue();
+    public halted      : Map<number,ProcessResult> = new Map<number,ProcessResult>();
+    public blocked     : Map<string,Process[]> = new Map<string,Process[]>();
+    public procs       : Map<number,Process>   = new Map<number,Process>();
     public connections : Map<number, { source : string, stop : () => void }> = new Map();
+
+    private TOP_LEVEL : MapEnv | undefined = undefined;
 
     private PID_SEQ       = 0;
     private CHAN_SEQ      = 0;
@@ -350,7 +353,7 @@ export class Strand {
     }
 
     private spawnInitProcess (exprs: TERM[], env : MapEnv) : Pid {
-        let root_env = newMapEnv( env ); // for the (defun)s
+        let root_env = this.TOP_LEVEL = newMapEnv( env ); // for the (defun)s
         let to_run   = [];
         for (const expr of exprs) {
             if (isCons(expr)) {
@@ -558,6 +561,8 @@ export class Strand {
                         return EvalArgs( tail, [], kont.env, Syscall( kont.env, kont.kont ) );
                     case 'slight/eval':
                         return EvalExpr( car(tail), kont.env, EvalTOS( kont.env, kont.kont ) );
+                    case 'slight/eval-in-top-level':
+                        return EvalExpr( car(tail), kont.env, EvalInTopLevel( kont.env, kont.kont ) );
                     }
                 }
                 // special form with an empty tail: report the arity instead of
@@ -597,6 +602,10 @@ export class Strand {
             default :
                 return Return( kont.expr, kont.env, kont.kont );
             }
+        case 'EVAL_IN_TOP':
+            if (returned == undefined) return RaiseError(`Expected value returned to EVAL_TOS, got undefined`, kont);
+            //Logger.log( this.TOP_LEVEL );
+            return Eval( returned, this.TOP_LEVEL as MapEnv, kont.kont );
         case 'EVAL_TOS':
             if (returned == undefined) return RaiseError(`Expected value returned to EVAL_TOS, got undefined`, kont);
             return Eval( returned, kont.env, kont.kont );

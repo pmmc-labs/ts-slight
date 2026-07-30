@@ -1,0 +1,73 @@
+
+(defun Lambda (params body env)
+    (lambda (m)
+        (case m
+            (:class  :Lambda)
+            (:params params)
+            (:body   body)
+            (:env    env))))
+
+(defun Builtin (body)
+    (lambda (m)
+        (case m
+            (:class  :Builtin)
+            (:body   body))))
+
+(defun bind-params (params args env)
+    (if (nil? params) env
+        (bind-params
+            (cdr params) (cdr args)
+            (assoc (car params) (car args) env))))
+
+(defun eval (expr env)
+    (pprint (list $$ :EVAL expr))
+    (cond
+        ((literal? expr)
+            (pprint (list $$ :IS-ATOM expr))
+            (yield expr))
+        ((sym?  expr)
+            (pprint (list $$ :IS-SYM expr))
+            (let found (lookup expr env))
+                (pprint (list $$ :FOUND? found))
+                (yield found))
+        ((cons? expr)
+            (pprint (list $$ :CALLING expr))
+            (let call (car expr))
+            (let args (cdr expr))
+            (case call
+                (:lambda
+                    (let p (car  args))
+                    (let b (cadr args))
+                    (Lambda p b env))
+                (#true
+                    (yield (apply (eval call env) (map (lambda (a) (eval a env)) args) env))))
+        )
+    )
+)
+
+(defun apply (call args env)
+    (pprint (list $$ :APPLY (call :class) args ))
+    (case (call :class)
+        (:Lambda
+            (pprint (list $$ :CALL-LAMBDA (call :body) args))
+            (yield (eval (call :body) (bind-params (call :params) args (call :env)) )))
+        (:Builtin
+            (pprint (list $$ :CALL-BIF (call :body) args))
+            (yield ((call :body) args))
+        )
+    )
+)
+
+(let env
+    (assoc :+ (Builtin (lambda (args) (+ (car args) (cadr args))))
+    (assoc :- (Builtin (lambda (args) (- (car args) (cadr args))))
+    (assoc :* (Builtin (lambda (args) (* (car args) (cadr args))))
+    (assoc :/ (Builtin (lambda (args) (/ (car args) (cadr args))))
+    ()))))
+)
+
+(let p1 (fork (eval '((lambda (x y) (+ x y)) 10 20) env)))
+(let p2 (fork (eval '((lambda (x y) (+ x y)) 50 90) env)))
+
+(pprint (join p1))
+(pprint (join p2))

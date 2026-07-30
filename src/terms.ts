@@ -17,8 +17,8 @@ export type Bool     = { type : 'BOOL',  value : boolean }
 export type ERROR    = { type : 'ERROR', error : any }
 
 export type RibNode  = { name : string, value : TERM, next : RibNode | undefined }
-export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined, [inspect.custom] : () => any }
-export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env, [inspect.custom] : () => any }
+export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined }
+export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
 export type Env      = MapEnv | RibEnv
 
 export type Lambda   = { type : 'LAMBDA', params : LIST, body : TERM, env : Env, name : Sym | undefined, [inspect.custom] : () => any }
@@ -131,15 +131,11 @@ export function cddr (list : Cons) : LIST | ERROR {
 // env stuff ...
 
 export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
-    return { type : 'MENV', bindings : new Map<string,TERM>(), parent,
-        [inspect.custom] : () => { return { type : 'MENV' } }
-    }
+    return { type : 'MENV', bindings : new Map<string,TERM>(), parent }
 }
 
 export function newRibEnv (parent : Env) : RibEnv {
-    return { type : 'RENV', head : undefined, parent,
-        [inspect.custom] : () => { return { type : 'RENV' } }
-    }
+    return { type : 'RENV', head : undefined, parent }
 }
 
 // Fork-time snapshot: pins the head of EVERY rib frame down to the
@@ -155,9 +151,6 @@ export function snapshotEnv (env : Env) : Env {
         type   : 'RENV',
         head   : env.head,
         parent : snapshotEnv(env.parent),
-        [inspect.custom] : () => {
-            return { type : 'RENV', snapeshot : true }
-        }
     };
 }
 
@@ -202,7 +195,7 @@ export function bindParams (params : LIST, args : LIST, env : Env) : RibEnv | ER
         args   = args.rest;
     }
     if (args !== NIL) return raise(`ARITY MISMATCH! got extra args ${pprint(args)}`);
-    return { type : 'RENV', head, parent : env, [inspect.custom] : () => { return { type : 'RENV' } } };
+    return { type : 'RENV', head, parent : env };
 }
 
 // ...

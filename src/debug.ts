@@ -112,7 +112,7 @@ export function dumpKont (kont : Kontinue) : string {
 }
 
 export function pprintKont (kont : Kontinue, depth : number) : string {
-    let kontStr = `${kont.type.padStart(11, ' ')} | ${depth.toString().padStart(3, ' ')} | ${(depth > 0 ? "-".repeat(depth) : "^")}`;
+    let kontStr = `${kont.type.padStart(11, ' ')} | ${depth.toString().padStart(3, ' ')} | ${kont.env.type == 'MENV' ? 'TOP' : 'LEX' } | ${(depth > 0 ? "-".repeat(depth) : "^")}`;
     switch (kont.type) {
     case 'EVAL'       : kontStr += ` ${pprint(kont.expr)}`;  break;
     case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`;  break;

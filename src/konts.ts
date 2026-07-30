@@ -14,6 +14,8 @@ export type WaitFor =
     | { target : 'RECV' }
     | { target : 'SYSCALL', name : string, args : TERM[] }
 
+export type EvalInTopLevel  = { type : 'EVAL_IN_TOP' } & Kontinuation
+
 export type EvalTOS   = { type : 'EVAL_TOS' } & Kontinuation
 export type Eval      = { type : 'EVAL',      expr : TERM                } & Kontinuation
 export type EvalExpr  = { type : 'EVAL_EXPR', expr : TERM                } & Kontinuation
@@ -45,6 +47,7 @@ export type Halt       = { type : 'HALT', result : MaybeTERM, env : Env }
 
 export type Kontinue =
     | Eval
+    | EvalInTopLevel
     | EvalTOS
     | EvalExpr
     | EvalHead
@@ -82,6 +85,10 @@ export function Eval (expr : TERM, env : Env, kont : Kontinue) : Eval {
 
 export function EvalTOS (env : Env, kont : Kontinue) : EvalTOS {
     return { type : 'EVAL_TOS', env, kont }
+}
+
+export function EvalInTopLevel (env : Env, kont : Kontinue) : EvalInTopLevel {
+    return { type : 'EVAL_IN_TOP', env, kont }
 }
 
 export function EvalExpr (expr : TERM, env : Env, kont : Kontinue) : EvalExpr {
