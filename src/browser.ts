@@ -1,4 +1,4 @@
-import { DEBUG }          from './debug.ts';
+import { DEBUG, LOG }     from './debug.ts';
 import { parse }          from './parser.ts';
 import {
     initalizeEnv,
@@ -25,7 +25,7 @@ export * from './strand.ts';
 export async function run (source : string, prelude : string = '', args : string[] = []) : Promise<ProcessResult[]> {
     let exprs = parse([ prelude, source ].join("\n;; -- \n"));
 
-    if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
+    if (DEBUG) LOG("Parsed: ", exprs.map(pprint));
 
     let env = newMapEnv();
     env = bind( sym('@ARGV'), list( ...args.map((arg) => str(arg)) ), env );
@@ -35,7 +35,7 @@ export async function run (source : string, prelude : string = '', args : string
     let halted = await strand.run(exprs, env);
     for (const proc of halted) {
         if (proc.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+            LOG(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
         }
     }
     return halted;

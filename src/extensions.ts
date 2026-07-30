@@ -1,5 +1,7 @@
 
 import * as readline from 'node:readline';
+
+import { Logger, LOG } from './debug.ts'
 import {
     type TERM, type LIST, type MapEnv, type Builtin, type Num, type Str, type Sym, type Bool, type ERROR, type Cons,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse, isCallable,
@@ -59,7 +61,7 @@ export function IO (env : MapEnv) : MapEnv {
     env = bind( sym('sys/io/print-ln'), liftListOp('sys/io/print-ln', (args) => {
         if (isNil(args)) return NIL;
         if (isCons(args.first)) args = args.first;
-        console.log(uncons(args).map((arg) =>
+        LOG(uncons(args).map((arg) =>
             isStr(arg) ? arg.value : pprint(arg)
         ).join(''));
         return NIL;
@@ -116,13 +118,13 @@ export function Benchmarking (env : MapEnv) : MapEnv {
 
     env = bind( sym('time-it'), liftUnOp('time-it', (t) => {
         if (!isStr(t)) return raise(`time-it expects a STR label, not ${t.type}`);
-        console.time(t.value);
+        Logger.time(t.value);
         return NIL;
     }), env );
 
     env = bind( sym('time-it/end'), liftUnOp('time-it/end', (t) => {
         if (!isStr(t)) return raise(`time-it/end expects a STR label, not ${t.type}`);
-        console.timeEnd(t.value);
+        Logger.timeEnd(t.value);
         return NIL;
     }), env );
 

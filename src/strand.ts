@@ -432,16 +432,17 @@ export class Strand {
         return proc;
     }
 
-    //public TRACE : Kontinue[] = []
-
     kontinue (proc : Process, returned : TERM | undefined = undefined) : Kontinue {
         proc.steps++;
         let kont = proc.kont;
         if (DEBUG) TRACE(proc);
-
-        //this.TRACE.push(kont);
-
         switch (kont.type) {
+        case 'DROP':
+            return kont.kont;
+        case 'RETURN':
+            return kont;
+        case 'ERR':
+            return kont;
         case 'EVAL':
             return EvalExpr( kont.expr, kont.env, kont.kont );
         case 'EVAL_EXPR':
@@ -624,6 +625,42 @@ export class Strand {
             default:
                 return RaiseError(`Expected Lambda or Builtin in APPLY`, kont)
             }
+        case 'SCOPE_EXIT':
+            if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
+            return Return( returned, kont.env, kont.kont )
+        case 'DEFINE':
+            if (returned == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
+            let local = bind( kont.name, returned, kont.env );
+            return Return( returned, kont.env, kont.kont );
+        case 'COND':
+            if (returned == undefined) return RaiseError(`Expected value returned to COND, got undefined`, kont);
+            // (or cond if-false)
+            if (kont.if_true === undefined) {
+                if (kont.if_false === undefined) return RaiseError(`Expected if-false in COND, got undefined`, kont);
+                if (isBool(returned) ? isFalse(returned) : isNum(returned) ? returned.value == 0 : isNil(returned)) {
+                    return EvalExpr( kont.if_false, kont.env, kont.kont )
+                } else {
+                    return Return( returned, kont.env, kont.kont );
+                }
+            }
+            // (and cond if-true)
+            else if (kont.if_false === undefined) {
+                if (kont.if_true === undefined) return RaiseError(`Expected if-true in COND, got undefined`, kont);
+                if (isBool(returned) ? isTrue(returned) : isNum(returned) ? returned.value != 0 : !isNil(returned)) {
+                    return EvalExpr( kont.if_true, kont.env, kont.kont )
+                } else {
+                    return Return( returned, kont.env, kont.kont );
+                }
+            }
+            // (if cond if-true if-false)
+            else {
+                if (!isBool(returned)) return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
+                if (isTrue(returned)) {
+                    return EvalExpr( kont.if_true, kont.env, kont.kont )
+                } else {
+                    return EvalExpr( kont.if_false, kont.env, kont.kont )
+                }
+            }
         case 'FOLD':
             if (returned == undefined) return RaiseError(`Expected args returned to FOLD, got undefined`, kont);
             if (!isList(returned))     return RaiseError(`Expected args LIST returned to FOLD, got ${pprint(returned)}`, kont);
@@ -655,12 +692,6 @@ export class Strand {
         case 'FOLD/RIGHT/K':
             if (returned == undefined) return RaiseError(`Expected value returned to FOLD/RIGHT/K`, kont);
             return Return( list( kont.item, returned ), kont.env, Apply( kont.call, kont.env, kont.kont ) );
-        case 'DROP':
-            return kont.kont;
-        case 'RETURN':
-            return kont;
-        case 'ERR':
-            return kont;
         case 'BLOCK':
             if (returned !== undefined) {
                 if (!isPid(returned)) return RaiseError(`Expected PID returned to BLOCK, got ${returned.type}`, kont);
@@ -705,42 +736,6 @@ export class Strand {
         case 'HALT':
             if (returned !== undefined) kont.result = returned;
             return kont;
-        case 'DEFINE':
-            if (returned == undefined) return RaiseError(`Expected value returned to DEFINE, got undefined`, kont);
-            let local = bind( kont.name, returned, kont.env );
-            return Return( returned, kont.env, kont.kont );
-        case 'COND':
-            if (returned == undefined) return RaiseError(`Expected value returned to COND, got undefined`, kont);
-            // (or cond if-false)
-            if (kont.if_true === undefined) {
-                if (kont.if_false === undefined) return RaiseError(`Expected if-false in COND, got undefined`, kont);
-                if (isBool(returned) ? isFalse(returned) : isNum(returned) ? returned.value == 0 : isNil(returned)) {
-                    return EvalExpr( kont.if_false, kont.env, kont.kont )
-                } else {
-                    return Return( returned, kont.env, kont.kont );
-                }
-            }
-            // (and cond if-true)
-            else if (kont.if_false === undefined) {
-                if (kont.if_true === undefined) return RaiseError(`Expected if-true in COND, got undefined`, kont);
-                if (isBool(returned) ? isTrue(returned) : isNum(returned) ? returned.value != 0 : !isNil(returned)) {
-                    return EvalExpr( kont.if_true, kont.env, kont.kont )
-                } else {
-                    return Return( returned, kont.env, kont.kont );
-                }
-            }
-            // (if cond if-true if-false)
-            else {
-                if (!isBool(returned)) return RaiseError(`Expected Bool returned to COND, got ${returned.type}`, kont);
-                if (isTrue(returned)) {
-                    return EvalExpr( kont.if_true, kont.env, kont.kont )
-                } else {
-                    return EvalExpr( kont.if_false, kont.env, kont.kont )
-                }
-            }
-        case 'SCOPE_EXIT':
-            if (returned == undefined) return RaiseError(`Expected result returned to SCOPE_EXIT, got undefined`, kont);
-            return Return( returned, kont.env, kont.kont )
         default:
             return RaiseError(`Unknown Kontinue`, kont);
         }

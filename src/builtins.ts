@@ -1,4 +1,6 @@
 
+import { LOG } from './debug.ts'
+
 import {
     type TERM, type LIST, type MapEnv, type Builtin,
     type Num, type Str, type Sym, type Bool, type ERROR,
@@ -352,7 +354,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     env = bind( sym('raise'), liftUnOp('raise', (t) => raise(t)), env );
 
-    env = bind( sym('pprint'), liftUnOp('pprint', (t) => { console.log(pprint(t)); return NIL; }), env );
+    env = bind( sym('pprint'), liftUnOp('pprint', (t) => { LOG(pprint(t)); return NIL; }), env );
 
     let GENSYM_SEQ = 0;
     env = bind( sym('gensym'), liftNulOp('gensym', () => sym(`#:${++GENSYM_SEQ}`)), env );

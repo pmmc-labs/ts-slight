@@ -1,6 +1,6 @@
 import { readFileSync }                     from 'node:fs';
 import { PerformanceObserver, performance } from 'node:perf_hooks';
-import { DEBUG }                            from './debug.ts';
+import { DEBUG, LOG, Logger }               from './debug.ts';
 import { parse }                            from './parser.ts';
 import { expand }                           from './reader.ts';
 import { initalizeEnv }                     from './builtins.ts';
@@ -23,19 +23,6 @@ export * from './sources.ts';
 export * from './konts.ts';
 export * from './strand.ts';
 
-import { Console } from 'console';
-
-import { inspect } from "node:util"
-
-export const Logger = new Console({
-    stdout         : process.stdout,
-    stderr         : process.stderr,
-    inspectOptions : {
-        depth       : 20,
-        breakLength : process.stdout.columns - (process.stdout.columns / 4), // 75% of the screen
-    },
-});
-
 function loadPrelude () {
     let path = './lib/Prelude.slight';
     let source = readFileSync(path, 'utf8');
@@ -45,7 +32,7 @@ function loadPrelude () {
 export async function main () {
     let path = process.argv[2];
     if (path == undefined) {
-        console.error(`usage: slight <file.slight> [args ...]`);
+        Logger.error(`usage: slight <file.slight> [args ...]`);
         process.exit(1);
     }
 
@@ -55,7 +42,7 @@ export async function main () {
     ].join("\n;; -- \n");
 
     let exprs = expand(parse(source));
-    if (DEBUG) console.log("Parsed: ", exprs.map(pprint));
+    if (DEBUG) LOG("Parsed: ", exprs.map(pprint));
 
     let env = newMapEnv();
     env = bind( sym('@ARGV'), list( ...process.argv.slice(3).map((arg) => !isNaN(Number(arg)) ? num(parseInt(arg)) : str(arg)) ), env );
@@ -83,11 +70,11 @@ export async function main () {
         heap_poll.unref();
     }
 
-    console.time('slight-run');
+    Logger.time('slight-run');
     let wall_start = performance.now();
     let halted = await strand.run(exprs, env);
     let wall_ms = performance.now() - wall_start;
-    console.timeEnd('slight-run');
+    Logger.timeEnd('slight-run');
 
     if (METRICS) {
         if (heap_poll != undefined) clearInterval(heap_poll);
@@ -99,7 +86,7 @@ export async function main () {
         }
         let mem = process.memoryUsage();
         if (mem.heapUsed > peak_heap) peak_heap = mem.heapUsed;
-        console.log('@@METRICS ' + JSON.stringify({
+        LOG('@@METRICS ' + JSON.stringify({
             wall_ms      : Math.round(wall_ms * 1000) / 1000,
             ...strand.metrics(),
             gc_ms        : Math.round(gc_ms * 1000) / 1000,
@@ -110,20 +97,18 @@ export async function main () {
     }
 
     for (const proc of halted) {
-        if (DEBUG) console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
+        if (DEBUG) Logger.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
         if (proc.type == 'HALT') {
-            if (DEBUG) console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
+            if (DEBUG) LOG(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
         } else if (proc.type == 'ERR') {
             if (proc.error.error !== 'KILLED') {
-                console.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
-                proc.trace.forEach((line) => console.log(line));
-                console.groupEnd();
+                Logger.group(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+                proc.trace.forEach((line) => LOG(line));
+                Logger.groupEnd();
             }
         }
-        if (DEBUG) console.groupEnd();
+        if (DEBUG) Logger.groupEnd();
     }
-
-    //Logger.log(strand.TRACE)
 }
 
 export async function prove (test_source : string) {
@@ -134,20 +119,20 @@ export async function prove (test_source : string) {
     ].join("\n;; -- \n");
 
     let exprs = expand(parse(source));
-    if (DEBUG) console.log("Test Parsed: ", exprs.map(pprint));
+    if (DEBUG) LOG("Test Parsed: ", exprs.map(pprint));
     let env = applyDefaultExtensions( initalizeEnv() );
 
     let strand = new Strand();
-    console.time('tests');
+    Logger.time('tests');
     let halted = await strand.run(exprs, env);
-    console.timeEnd('tests');
+    Logger.timeEnd('tests');
     for (const proc of halted) {
-        console.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
+        Logger.group(`Process ${pprint(proc.pid)} ran for ${proc.steps} step(s)`);
         if (proc.type == 'HALT') {
-            console.log(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
+            LOG(pprint(proc.pid), ' HALTED: ', proc.result == undefined ? '!!!' : pprint(proc.result));
         } else if (proc.type == 'ERR') {
-            console.log(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
+            LOG(pprint(proc.pid), ' ERRORED: ', pprint(proc.error));
         }
-        console.groupEnd();
+        Logger.groupEnd();
     }
 }

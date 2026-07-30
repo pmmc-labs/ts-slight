@@ -10,9 +10,6 @@ export function parse (source : string) : TERM[] {
 
     if (tokens == undefined) throw new Error(`Expected tokens from (${source})`)
 
-    //console.log(source);
-    //console.log(tokens);
-
     let done  : any[] = [];
     let stack : any[] = [];
 
@@ -34,8 +31,6 @@ export function parse (source : string) : TERM[] {
     }
 
     while (tokens.length > 0) {
-        //console.log('TOKENS: ', tokens);
-        //console.log('STACK:  ', stack);
         let token = tokens.shift()!;
         if (token.startsWith(';')) continue;
         switch (token) {

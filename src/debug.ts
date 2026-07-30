@@ -4,8 +4,21 @@ import { pprint, uncons } from './terms.ts';
 
 export const DEBUG : boolean = (globalThis as any).process?.env?.["DEBUG"] == '1';
 
+import { Console } from 'console';
+
+import { inspect } from "node:util"
+
+export const Logger = new Console({
+    stdout         : process.stdout,
+    stderr         : process.stderr,
+    inspectOptions : {
+        depth       : 20,
+        breakLength : process.stdout.columns - (process.stdout.columns / 4), // 75% of the screen
+    },
+});
+
 export function LOG (...msgs : any[]) : void {
-    console.log( ...msgs );
+    Logger.log( ...msgs );
 }
 
 export function TRACE (proc : Process) : void {
@@ -42,7 +55,7 @@ export function TRACE (proc : Process) : void {
     switch (proc.kont.type) {
     case 'APPLY':
         if (proc.kont.call.type == 'LAMBDA') {
-            console.log(
+            Logger.log(
                 [
                     proc.pid.ident.toString().padStart(4, '0'),
                     proc.steps.toString().padStart(6, '0'),
@@ -52,7 +65,7 @@ export function TRACE (proc : Process) : void {
         }
         break;
     case 'SCOPE_EXIT':
-        console.log(
+        Logger.log(
             [
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
@@ -61,7 +74,7 @@ export function TRACE (proc : Process) : void {
         );
         break;
     default:
-        console.log(
+        Logger.log(
             [
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
