@@ -1,0 +1,13 @@
+
+
+(let parsed (slight/parse "(defun adder (x y) (+ x y)) (adder 10 20)"))
+
+(pprint parsed)
+
+(let body (cdr parsed))
+(let adder  (slight/eval (car  body)))
+(let result (slight/eval (cadr body)))
+
+(pprint result)
+(pprint (adder 100 200))
+(pprint (slight/eval parsed))
