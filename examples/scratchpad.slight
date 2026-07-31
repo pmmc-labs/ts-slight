@@ -1,21 +1,13 @@
 
-(defun Greeter ()
-    (let msg (recv))
-    (pprint (concat "Hello " msg))
-    (yield (Greeter))
-)
 
-(let g (fork (Greeter)))  ;; fork the actor
-(send g "World")          ;; sent it a message
-(yield ())                ;; yield so that Greeter can respond
+(let parsed (slight/parse "(defun adder (x y) (+ x y)) (adder 10 20)"))
 
-;; now change Greeter's definition
-(slight/eval-in-top-level
-    '(defun Greeter () (let msg (recv)) (pprint (concat "Goodbye " msg)) (yield (Greeter))))
+(pprint parsed)
 
-;; send message again
-;; the new code is live
-(send g "World")
+(let body (cdr parsed))
+(let adder  (slight/eval (car  body)))
+(let result (slight/eval (cadr body)))
 
-(yield ()) ;; yield so that new Greeter code gets the message
-(kill g)   ;; then we can kill it to clean things up
+(pprint result)
+(pprint (adder 100 200))
+(pprint (slight/eval parsed))

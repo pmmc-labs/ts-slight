@@ -43,13 +43,8 @@ export function Slight (env : MapEnv) : MapEnv {
 
     env = bind( sym('slight/parse'), liftUnOp('slight/parse', (t) => {
         if (!isStr(t)) return raise(`slight/parse expects a STR source, not ${t.type}`);
-        let exprs = parse( t.value )
-        return exprs[0] as TERM;
-    }), env );
-
-    env = bind( sym('slight/expand'), liftUnOp('slight/expand', (t) => {
-        let exprs = expand( [ t ] )
-        return exprs[0] as TERM;
+        let exprs = expand( parse( t.value ) );
+        return list( sym('do'), ...exprs );
     }), env );
 
     return env;
