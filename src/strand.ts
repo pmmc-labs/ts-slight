@@ -3,7 +3,7 @@ import {
     type TERM, type Env, type MapEnv, type Pid, type ERROR, type LIST,
     isCons, isSym, isList, isNil, isPid, isError, isBool, isTrue, isFalse, isNum,
     isLambda, isBuiltin, isCallable,
-    NIL, car, cdr, cons, uncons, list, sym, lambda,
+    NIL, car, cdr, cadr, cons, uncons, list, sym, lambda,
     newPid, newMapEnv, newRibEnv, snapshotEnv, bind, lookup, bindParams, raise, pprint,
 } from './terms.ts';
 import {

@@ -33,7 +33,7 @@ export function TRACE (proc : Process) : void {
     case 'SYSCALL'    :
     case 'YIELD'      :
     case 'EVAL'       :
-    case 'BLOCK'      : return;
+    case 'BLOCK'      : //return;
     case 'APPLY'      :
     case 'SCOPE_EXIT' :
     case 'RETURN'     :
