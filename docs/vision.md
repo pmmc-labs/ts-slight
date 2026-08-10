@@ -1,7 +1,8 @@
 # slight: Vision
 
 *2026-07-29. Distilled from a working session; grounded in the code as it
-exists at this commit. Speculation is quarantined in the final section.*
+exists at this commit. Speculation is quarantined in the final section.
+2026-08-10: added "A Dynabook substrate" (positioning).*
 
 ## What slight is
 
@@ -357,6 +358,58 @@ Two hard requirements this arm imposes (design-in, not bolt-on):
    allowlisted syscall table (the syscall boundary makes this real
    confinement, not sandbox-by-hope), with meta-eval + fuel as the
    deluxe inspection mode.
+
+## A Dynabook substrate (positioning)
+
+The honest name for what the layers add up to. Not "a Dynabook" — that
+word is a claim about people (Kay's criterion: a medium whose reading and
+writing are symmetric, whose tools the user can modify while using them,
+learnable by a motivated child). slight makes no learnability claim yet;
+its authoring surface is s-expressions in a terminal. What slight is
+building is the **substrate** such a medium needs and no shipping system
+provides:
+
+- a live, inspectable image (Smalltalk line) —
+- whose processes are share-nothing actors, so poking it is safe
+  (Erlang line) —
+- whose substance is content-addressed, mergeable terms (the store) —
+- whose unit of sharing is a self-contained, signable, hand-editable
+  document (HyperCard / Lotus Notes line) —
+- on a scheduler deterministic enough to replay (and eventually
+  replicate).
+
+Each existing neighbor holds one or two of these and structurally cannot
+reach the others: Pharo's image is live but unmergeable; Livebook is a
+notebook beside a batch language, its state unaddressable; Unison has the
+content-addressed store without liveness; HyperCard had documents-as-apps
+without processes or merge. The intersection cell is empty. That is the
+seat slight is walking toward.
+
+Two citations that upgrade "influences" to "both founders proposed
+pieces of this":
+
+- **Armstrong, "Why do we need modules at all?"** (erlang-questions,
+  2011): proposes abolishing modules for a global content-hash-keyed
+  function database with names as mutable pointers — the hash-cons store
+  plus refs, nearly clause for clause (Unison cites it too).
+- **Kay's Croquet/TeaTime**: deterministic replicated computation —
+  identical VMs whose nondeterminism is funneled through a
+  message-ordering boundary. slight's scheduler is a single-node TeaTime
+  island; the determinism claim above is the same architecture one node
+  at a time.
+
+(Quoted accurately, since it gets garbled: Kay on Erlang, Quora 2019 —
+"he might be right. Erlang is much closer to the original ideas I had
+about 'objects' and how to use them." Not "the most OO language.")
+
+The mode-(c) recipient — hand-editing the plain-text document and
+mailing it back — is the substrate's answer to Kay's iPad critique: the
+document never stops being writable matter. The missing top half, out of
+scope until workspace, store, and browser node exist, is the
+authoring-surface layer (Etoys/HyperCard-grade, itself written as slight
+documents so the trapdoor to the guts is a ramp, not a cliff). Don't
+claim the word; build toward the criterion; let the party wizard be the
+accruing proof.
 
 ## Design commitments (decisions already made)
 
