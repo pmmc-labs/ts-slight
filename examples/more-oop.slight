@@ -1,0 +1,24 @@
+
+
+(defun Cursor (row col max-row max-col)
+
+    (defun calculateLinePos (self offset) (+ offset row))
+
+    (defun moveUp    (self) (Cursor (if (== row 0) row (dec row))       col max-row max-col))
+    (defun moveDown  (self) (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
+    (defun moveLeft  (self) (Cursor row       (if (== col 0) col (dec col)) max-row max-col))
+    (defun moveRight (self) (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
+    (defun lineBreak (self) (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
+
+    (let this (lambda (m args)
+        (apply (slight/eval m) (cons this (if (list? args) args (list args))))))
+    this
+)
+
+(let cursor1 (Cursor 0 0 20 40))
+(let cursor2 (Cursor 10 10 20 40))
+
+(pprint ((cursor1 :moveDown ()) :calculateLinePos 10))
+(pprint ((cursor2 :moveDown ()) :calculateLinePos 30))
+
+
