@@ -7,7 +7,7 @@ import {
     type Cons, type LITERAL,
     isNil, isCons, isNum, isStr, isList, isLiteral, isBool, isTrue, isFalse,
     isCallable, isSym, isLambda, isBuiltin,
-    TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, num, str, bool, sym, raise,
+    TRUE, FALSE, NIL, cons, car, cdr, cadr, cddr, caddr, num, str, bool, sym, raise,
     newMapEnv, bind, eq, list, pprint, uncons
 } from './terms.ts';
 
@@ -342,6 +342,7 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('cdr'),  liftUnOp('cdr',    (list) => { if (isCons(list)) return cdr(list);  return raise(`Expected a list for cdr, not ${list.type}`); }),  env );
     env = bind( sym('cadr'), liftUnOp('cadr',   (list) => { if (isCons(list)) return cadr(list); return raise(`Expected a list for cadr, not ${list.type}`); }),  env );
     env = bind( sym('cddr'), liftUnOp('cddr',   (list) => { if (isCons(list)) return cddr(list); return raise(`Expected a list for cddr, not ${list.type}`); }),  env );
+    env = bind( sym('caddr'), liftUnOp('caddr',   (list) => { if (isCons(list)) return caddr(list); return raise(`Expected a list for cddr, not ${list.type}`); }),  env );
 
     // list functions
     env = bind( sym('list'), liftListOp('list', (args) => args), env );

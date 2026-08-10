@@ -128,6 +128,15 @@ export function cddr (list : Cons) : LIST | ERROR {
     return list.rest.rest;
 }
 
+export function caddr (list : Cons) : TERM {
+    let rest = cddr(list);
+    if (isError(rest)) return rest;
+    if (isNil(rest)) return raise(`Cannot call caddr on a list with a NIL tail`);
+    return rest.first;
+}
+
+
+
 // env stuff ...
 
 export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
