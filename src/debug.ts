@@ -21,27 +21,12 @@ export function LOG (...msgs : any[]) : void {
     Logger.log( ...msgs );
 }
 
-export function TRACE (proc : Process) : void {
-    switch (proc.kont.type) {
-    case 'EVAL_HEAD'  :
-    case 'EVAL_ARGS'  :
-    case 'DEFINE'     :
-    case 'DROP'       :
-    case 'COND'       :
-    case 'SEND'       :
-    case 'DISCONNECT' :
-    case 'SYSCALL'    :
-    case 'YIELD'      :
-    case 'EVAL'       :
-    case 'BLOCK'      : //return;
-    case 'APPLY'      :
-    case 'SCOPE_EXIT' :
-    case 'RETURN'     :
-    case 'HALT'       :
-    case 'ERR'        :
-    case 'EVAL_EXPR'  :
-    }
+function kontList (kont : Kontinue, acc : string[]) {
+    if (kont.type == 'HALT') return acc;
+    return kontList( kont.kont, [ kont.type, ...acc ] );
+}
 
+export function TRACE (proc : Process) : void {
     let depth = 0;
     let kont : Kontinue = proc.kont;
     while (kont != undefined) {

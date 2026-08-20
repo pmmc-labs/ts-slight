@@ -1,0 +1,140 @@
+
+(defun Color (ansi-8)
+    (lambda (m)
+        (case m
+            (:fg (concat \e "[3" ansi-8 "m"))
+            (:bg (concat \e "[4" ansi-8 "m"))
+            (:fg-bright (concat \e "[9"  ansi-8 "m"))
+            (:bg-bright (concat \e "[10" ansi-8 "m"))
+        )))
+
+(defun Theme ()
+    (lambda (m)
+        (case m
+            (:black   (Color 0))
+            (:red     (Color 1))
+            (:green   (Color 2))
+            (:yellow  (Color 3))
+            (:blue    (Color 4))
+            (:magenta (Color 5))
+            (:cyan    (Color 6))
+            (:white   (Color 7))
+            (:reset   (~ \e "[0m"))
+        )))
+
+(defun Screen (rows cols theme)
+    (lambda (m)
+        (case m
+            (:rows  rows)
+            (:cols  cols)
+            (:theme theme)
+        )))
+
+(defun Screen/home-cursor (s)     (tty/write \e "[H"))
+(defun Screen/lift-cursor (s)     (tty/write \e "[?25l"))
+(defun Screen/drop-cursor (s)     (tty/write \e "[?25h"))
+(defun Screen/move-cursor (s r c) (tty/write  \e "[" (inc r) ";" (inc c) "H"))
+(defun Screen/write       (s out) (tty/write out))
+
+(defun Screen/clear-to-eol (s) (tty/write \e "[0K"))
+(defun Screen/clear-to-sol (s) (tty/write \e "[1K"))
+(defun Screen/clear-line   (s) (tty/write \e "[2K"))
+
+(defun Cursor (row col max-row max-col)
+    (lambda (m)
+        (case m
+            (:row       row)
+            (:col       col)
+            (:moveUp    (Cursor (if (== row 0)       row (dec row)) col max-row max-col))
+            (:moveDown  (Cursor (if (== row max-row) row (inc row)) col max-row max-col))
+            (:moveLeft  (Cursor row (if (== col 0)       col (dec col)) max-row max-col))
+            (:moveRight (Cursor row (if (== col max-col) col (inc col)) max-row max-col))
+            (:lineBreak (Cursor (if (== row max-row) row (inc row))   0 max-row max-col))
+        )))
+
+(defun Window (h w title screen x y)
+    (lambda (m)
+        (case m
+            (:title  title)
+            (:screen screen)
+            (:at-row x)
+            (:at-col y)
+            (:rows   h)
+            (:cols   w)
+            (:cursor (Cursor 0 0 h w))
+
+            (:max-rows (+ h 2)) ; header + footer
+            (:max-cols w)
+        )))
+
+(defun Window/init (w)
+    (Screen/move-cursor (w :screen) (w :at-row) (w :at-col))
+    (Window/draw w)
+    (Screen/move-cursor (w :screen) (inc (w :at-row)) (+ (w :at-col) 4)) ; left-gutter
+    (w :cursor))
+
+(defun Window/draw (w)
+    (Window/draw-header  w)
+    (Screen/move-cursor (w :screen) (+ (w :at-row) 1) (w :at-col))
+    (Window/draw-body    w 1)
+    (Window/draw-footer  w))
+
+(defun Window/draw-header (w)
+    (tty/write
+        ((((w :screen) :theme) :cyan)  :bg)
+        ((((w :screen) :theme) :white) :fg)
+        (w :title)
+        (str-repeat " " (- (w :cols) (str-len (w :title))))
+        (((w :screen) :theme) :reset)
+    ))
+
+(defun Window/draw-footer (w)
+    (tty/write
+        ((((w :screen) :theme) :blue)  :bg)
+        ((((w :screen) :theme) :black) :fg)
+        (str-repeat " " (w :cols))
+        (((w :screen) :theme) :reset)
+    ))
+
+(defun Window/draw-body (w at-row)
+    (if (> at-row (w :rows)) ()
+        (do
+            (tty/write \e "[2m" (format-num at-row 3 "0") "│" (str-repeat "_" (- (w :cols) 4)) \e "[0m")
+            (Screen/move-cursor (w :screen) (+ (w :at-row) (inc at-row)) (w :at-col))
+            (Window/draw-body w (inc at-row))
+        )))
+
+(defun Window/type (w cursor chars)
+    (Screen/move-cursor (w :screen)
+        (+ (+ (w :at-row) 1) (cursor :row))
+        (+ (+ (w :at-col) 4) (cursor :col))
+    )
+    (tty/write chars))
+
+
+(let screen (Screen
+    (- (tty/screen/rows) 1)
+    (- (tty/screen/cols) 1)
+    (Theme)
+))
+
+(let win1 (Window 20 60 "> Window 1" screen 0 0))
+(let c1   (Window/init win1))
+
+(let win2 (Window 10 60 "> Window 2" screen (win1 :max-rows) 0))
+(let c2   (Window/init win2))
+
+(Window/type win1 c1 "Hello World")
+(Window/type win1 (c1 :moveDown) "Goodbye World")
+(Window/type win1 ((c1 :moveDown) :moveDown) "Hello Again!")
+
+(let win3 (Window 15 40 "> Window 3" screen 0 (win1 :max-cols)))
+(let c3   (Window/init win3))
+
+(let win4 (Window 15 40 "> Window 4" screen (win3 :max-rows) (win1 :max-cols)))
+(let c4   (Window/init win4))
+
+(Screen/move-cursor screen 60 0)
+
+
+

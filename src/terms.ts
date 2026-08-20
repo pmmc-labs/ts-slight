@@ -17,7 +17,7 @@ export type Bool     = { type : 'BOOL',  value : boolean }
 export type ERROR    = { type : 'ERROR', error : any }
 
 export type RibNode  = { name : string, value : TERM, next : RibNode | undefined }
-export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined }
+export type MapEnv   = { type : 'MENV', bindings : Map<string,TERM>, parent : MapEnv | undefined, [inspect.custom] : () => any }
 export type RibEnv   = { type : 'RENV', head : RibNode | undefined,  parent : Env }
 export type Env      = MapEnv | RibEnv
 
@@ -140,7 +140,11 @@ export function caddr (list : Cons) : TERM {
 // env stuff ...
 
 export function newMapEnv (parent : MapEnv | undefined = undefined) : MapEnv {
-    return { type : 'MENV', bindings : new Map<string,TERM>(), parent }
+    return { type : 'MENV', bindings : new Map<string,TERM>(), parent,
+        [inspect.custom] : () => {
+            return [ 'BUILTINS', 'DEFUNS' ]
+        }
+    }
 }
 
 export function newRibEnv (parent : Env) : RibEnv {
