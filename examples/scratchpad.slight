@@ -172,9 +172,9 @@
 
 (let windows (list
     (Window 1 20 60 "> Window 1" screen 0   0)
-    (Window 2 10 60 "> Window 2" screen 22  0)
-    (Window 3 15 40 "> Window 3" screen 0  64)
-    (Window 4 15 40 "> Window 4" screen 17 64)
+    (Window 2 10 60 "> Window 2" screen 20  20)
+    (Window 3 15 40 "> Window 3" screen 40  40)
+    (Window 4 15 40 "> Window 4" screen 60  60)
 ))
 
 (join (connect :keypress
