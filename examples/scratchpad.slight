@@ -135,7 +135,7 @@
     (tty/write
         ((((w :screen) :theme) :yellow) :bg)
         ((((w :screen) :theme) :red)    :fg)
-        "░"
+        "⋰"
         (((w :screen) :theme) :reset)
         \e "[D")
     cursor)
