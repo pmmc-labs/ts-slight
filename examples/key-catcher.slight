@@ -1,5 +1,38 @@
 
 
-(defun echo () (pprint (recv)) (echo))
+(defun Keyboard (color)
+    (let msg (recv))
+    (let key  (car msg))
+    (let mods (cdr msg))
+    (when (not (nil? mods))
+        (case (car mods)
+            (:shift
+                (tty/write \e "[" color "m " \e "[D"))
+            (:alt
+                (tty/write \e "[49m " \e "[D"))
+        )
+    )
+    (case key
+        (:ArrowUp    (tty/write \e "[A"))
+        (:ArrowDown  (tty/write \e "[B"))
+        (:ArrowRight (tty/write \e "[C"))
+        (:ArrowLeft  (tty/write \e "[D"))
+    )
+    (yield (Keyboard
+        (case key
+            (1 41)
+            (2 42)
+            (3 43)
+            (4 44)
+            (5 45)
+            (6 46)
+            (7 47)
+            (#true color)
+        )
+    ))
+)
 
-(join (connect :keypress (echo)))
+(join (connect :keypress (Keyboard 47)))
+
+;(defun echo () (pprint (recv)) (echo))
+;(join (connect :keypress (echo)))

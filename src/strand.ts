@@ -680,7 +680,7 @@ export class Strand {
             if (fold_call == undefined) return RaiseError(`Expected <call> arg for FOLD, got undefined`, kont);
             if (!isCallable(fold_call)) return RaiseError(`Expected <call> to be callable, got ${fold_call.type}`, kont);
             if (fold_seq  == undefined) return RaiseError(`Expected <seq> arg for FOLD, got undefined`, kont);
-            if (!isCons(fold_seq))      return RaiseError(`Expected <seq> to be Cons, got ${fold_seq.type}`, kont);
+            if (!isList(fold_seq))      return RaiseError(`Expected <seq> to be Cons, got ${fold_seq.type}`, kont);
             if (kont.kind == 'FOLD/LEFT') {
                 return FoldLeft( fold_acc, fold_call, fold_seq, kont.env, kont.kont );
             }

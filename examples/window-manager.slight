@@ -1,0 +1,212 @@
+
+(defun Color (ansi-8)
+    (lambda (m)
+        (case m
+            (:fg (concat \e "[3" ansi-8 "m"))
+            (:bg (concat \e "[4" ansi-8 "m"))
+            (:fg-bright (concat \e "[9"  ansi-8 "m"))
+            (:bg-bright (concat \e "[10" ansi-8 "m"))
+        )))
+
+(defun Theme ()
+    (lambda (m)
+        (case m
+            (:black   (Color 0))
+            (:red     (Color 1))
+            (:green   (Color 2))
+            (:yellow  (Color 3))
+            (:blue    (Color 4))
+            (:magenta (Color 5))
+            (:cyan    (Color 6))
+            (:white   (Color 7))
+            (:reset   (~ \e "[0m"))
+            (:dim     (~ \e "[2m"))
+        )))
+
+(defun Screen (rows cols theme)
+    (lambda (m)
+        (case m
+            (:rows  rows)
+            (:cols  cols)
+            (:theme theme)
+        )))
+
+(defun Screen/home-cursor (s)     (tty/write \e "[H"))
+(defun Screen/show-cursor (s)     (tty/write \e "[?25l"))
+(defun Screen/hide-cursor (s)     (tty/write \e "[?25h"))
+(defun Screen/move-cursor (s r c) (tty/write  \e "[" (inc r) ";" (inc c) "H"))
+(defun Screen/write       (s out) (tty/write out))
+
+(defun Screen/clear-to-eol (s) (tty/write \e "[0K"))
+(defun Screen/clear-to-sol (s) (tty/write \e "[1K"))
+(defun Screen/clear-line   (s) (tty/write \e "[2K"))
+
+(defun Screen/clear-to-eos (s) (tty/write \e "[0J"))
+(defun Screen/clear-to-tos (s) (tty/write \e "[1J"))
+(defun Screen/clear-screen (s) (tty/write \e "[2J"))
+
+(defun Cursor (row col max-row max-col)
+    (lambda (m)
+        (case m
+            (:row       row)
+            (:col       col)
+            (:moveUp    (Cursor (if (<= row 0)       row (dec row)) col max-row max-col))
+            (:moveDown  (Cursor (if (>= row max-row) row (inc row)) col max-row max-col))
+            (:moveLeft  (Cursor row (if (<= col 0)       col (dec col)) max-row max-col))
+            (:moveRight (Cursor row (if (>= col max-col) col (inc col)) max-row max-col))
+            (:lineBreak (Cursor (if (>= row max-row) row (inc row))   0 max-row max-col))
+        )))
+
+(defun Window (id h w title screen x y)
+    (lambda (m)
+        (case m
+            (:id     id)
+            (:title  title)
+            (:screen screen)
+            (:at-row x)
+            (:at-col y)
+            (:rows   h)
+            (:cols   w)
+            (:cursor (Cursor 0 0 (dec h) (dec w)))
+
+            (:home-row (+ x 1))
+            (:home-col (+ y 4))
+
+            (:max-rows (+ h 2)) ; header + footer
+            (:max-cols (+ w 4)) ; left-gutter
+        )))
+
+(defun Window/init (w)
+    (Window/draw w)
+    (Window/move-cursor w (w :cursor)))
+
+(defun Window/draw (w)
+    (Window/draw-header  w #false)
+    (Window/draw-body    w 1)
+    (Window/draw-footer  w ""))
+
+(defun Window/draw-header (w is-active?)
+    (Screen/move-cursor (w :screen) (w :at-row) (w :at-col))
+    (tty/write
+        (if is-active?
+            ((((w :screen) :theme) :cyan) :bg)
+            ((((w :screen) :theme) :blue) :bg))
+        ((((w :screen) :theme) :black) :fg)
+        (w :title)
+        (str-repeat " " (- (w :max-cols) (str-len (w :title))))
+        (((w :screen) :theme) :reset)
+    ))
+
+(defun Window/draw-footer (w msg)
+    (Screen/move-cursor (w :screen) (+ (w :at-row) (inc (w :rows))) (w :at-col))
+    (tty/write
+        ((((w :screen) :theme) :white) :bg)
+        ((((w :screen) :theme) :blue)  :fg)
+        (str-repeat " " (- (w :max-cols) (str-len msg)))
+        msg
+        (((w :screen) :theme) :reset)
+    ))
+
+(defun Window/draw-body (w at-row)
+    (when (<= at-row 1)
+        (Screen/move-cursor (w :screen) (w :home-row) (w :at-col)))
+    (when (>= (w :rows) at-row)
+        (tty/write
+            ((((w :screen) :theme) :black) :bg)
+            ((((w :screen) :theme) :green) :fg)
+            "▏" (format-num at-row 2 "0") "▕"
+            ((((w :screen) :theme) :black)   :bg)
+            ((((w :screen) :theme) :magenta) :fg)
+            (str-repeat "_" (w :cols))
+            (((w :screen) :theme) :reset))
+        (Screen/move-cursor (w :screen) (+ (w :at-row) (inc at-row)) (w :at-col))
+        (Window/draw-body w (inc at-row))))
+
+(defun Window/move-cursor (w cursor)
+    (tty/write
+        ((((w :screen) :theme) :black) :bg)
+        ((((w :screen) :theme) :red)   :fg)
+        "_"
+        \e "[D")
+    (Window/draw-footer w (concat "line: " (format-num (inc (cursor :row)) 2 " ") " col: " (format-num (inc (cursor :col)) 2 " ") " "))
+    (Screen/move-cursor (w :screen)
+        (+ (w :home-row) (cursor :row))
+        (+ (w :home-col) (cursor :col)))
+    (tty/write
+        ((((w :screen) :theme) :yellow) :bg)
+        ((((w :screen) :theme) :red)    :fg)
+        "░"
+        (((w :screen) :theme) :reset)
+        \e "[D")
+    cursor)
+
+(defun Window/print (w chars)
+    (Screen/write (w :screen) chars))
+
+(defun Keyboard/cycle-window-focus (windows active-id)
+    (let next-id (if (< active-id (length windows)) (inc active-id) 1))
+    (let active-window (find (lambda (w) (eq? ((car w) :id) active-id)) windows))
+    (let next-window   (find (lambda (w) (eq? ((car w) :id)   next-id)) windows))
+    (Window/draw-header (car active-window) #false)
+    (Window/draw-header (car next-window)   #true)
+    next-id)
+
+(defun Keyboard (windows active-id)
+    (let key (recv))
+    (Keyboard
+        (map (lambda (view)
+            (let w (car view))
+            (if (!= (w :id) active-id) view
+            (do
+                (let c (cadr view))
+                (case (car key)
+                    (:ArrowLeft  (list w (Window/move-cursor w (c :moveLeft ))))
+                    (:ArrowRight (list w (Window/move-cursor w (c :moveRight))))
+                    (:ArrowUp    (list w (Window/move-cursor w (c :moveUp   ))))
+                    (:ArrowDown  (list w (Window/move-cursor w (c :moveDown ))))
+                    (#true       view)
+                )
+            ))
+        ) windows)
+        (case (car key)
+            (:Tab (Keyboard/cycle-window-focus windows active-id))
+            (#true active-id)
+        )
+    ))
+
+(let screen (Screen
+    (- (tty/screen/rows) 1)
+    (- (tty/screen/cols) 1)
+    (Theme)
+))
+
+(Screen/clear-to-tos screen)
+
+(let windows
+    (map (lambda (w) (list w (Window/init w)))
+    (list
+        (Window 1 20 60  "> Window 1" screen 0    0)
+        (Window 2 10 60  "> Window 2" screen 23   0)
+        (Window 3 15 40  "> Window 3" screen 0   65)
+        (Window 4 15 40  "> Window 4" screen 18  65)
+        (Window 5 33 40  "> Window 5" screen 0  110)
+        (Window 6 10 150 "> Window 6" screen 36   0)
+        (Window 7 20 60  "> Window 7" screen 49   0)
+        (Window 8 20 85  "> Window 8" screen 49  65)
+        (Window 9 80 60  "> Window 9" screen 0  155)
+    ))
+)
+
+(let keyboard (connect :keypress
+    (Keyboard
+        windows
+        ((car (car windows)) :id))))
+
+(Window/draw-header (car (car windows)) #true)
+
+(join keyboard)
+
+;(Screen/move-cursor screen 60 0)
+
+
+
