@@ -29,33 +29,34 @@ function kontList (kont : Kontinue, acc : string[]) {
 export function TRACE (proc : Process) : void {
     let depth = 0;
     let kont : Kontinue = proc.kont;
+
+    let chain = [];
     while (kont != undefined) {
         depth++;
         if (kont.type == 'HALT') break;
         kont = kont.kont;
+        chain.push(kont);
     }
 
     if (depth > 0) depth--;
 
     switch (proc.kont.type) {
     case 'APPLY':
-        if (proc.kont.call.type == 'LAMBDA') {
-            Logger.log(
-                [
-                    proc.pid.ident.toString().padStart(4, '0'),
-                    proc.steps.toString().padStart(6, '0'),
-                    `${proc.kont.type.padStart(11, ' ')} > ${pprint(proc.kont.call)}`
-                ].join(' | '),
-            );
-        }
-        break;
+        Logger.log(
+            [
+                proc.pid.ident.toString().padStart(4, '0'),
+                proc.steps.toString().padStart(6, '0'),
+                `${proc.kont.type.padStart(11, ' ')} > ${pprint(proc.kont.call)}`
+            ].join(' │ ')
+        );
+        break
     case 'SCOPE_EXIT':
         Logger.log(
             [
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
                 `${proc.kont.type.padStart(11, ' ')} < ${pprint(proc.kont.call)}`
-            ].join(' | '),
+            ].join(' │ ')
         );
         break;
     default:
@@ -64,11 +65,57 @@ export function TRACE (proc : Process) : void {
                 proc.pid.ident.toString().padStart(4, '0'),
                 proc.steps.toString().padStart(6, '0'),
                 pprintKont(proc.kont, depth)
-            ].join(' | '),
+            ].join(' │ ')
         );
-        break;
+    }
+
+    if (chain.length > 0) {
+        Logger.log(`${' '.repeat(14)}├${'─'.repeat(13)}╮`);
+        Logger.log(
+            chain.map((k) =>
+                `${' '.repeat(14)}│ ${pprintKont(k, 0)}`
+            ).join("\n")
+        );
+        Logger.log(`${' '.repeat(14)}╰${'─'.repeat(13)}╯`);
     }
 }
+
+export function pprintKont (kont : Kontinue, depth : number) : string {
+    let kontStr = `${kont.type.padStart(11, ' ')} │`
+            //`${
+            //    kont.type.padStart(11, ' ')
+            //} │ ${
+            //    depth.toString().padStart(3, ' ')
+            //} │ ${
+            //    kont.env.type == 'MENV' ? 'TOP' : 'LEX'
+            //} │ ${
+            //    (depth > 0 ? "  ╎".repeat(depth) : "^")
+            //}`;
+    switch (kont.type) {
+    case 'EVAL'       : kontStr += ` ${pprint(kont.expr)}`;  break;
+    case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`;  break;
+    case 'EVAL_HEAD'  : kontStr += ` ${pprint(kont.args)}`;  break;
+    case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`;  break;
+    case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
+    case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`;  break;
+    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> [${kont.done.map(pprint).join(' ')}]`; break;
+    case 'BLOCK'      : kontStr += ` ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
+    case 'HALT'       : kontStr += ` ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
+    case 'ERR'        : kontStr += ` ${pprint(kont.error)}`; break;
+    case 'FOLD/RIGHT' : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
+    case 'FOLD/LEFT'  : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
+    case 'DROP'       : break;
+    case 'COND'       : break;
+    case 'SCOPE_EXIT' : kontStr += ` ${pprint(kont.call)}`; break;
+    case 'SEND'       : break;
+    case 'DISCONNECT' : break;
+    case 'SYSCALL'    : break;
+    case 'YIELD'      : break;
+    }
+    return kontStr;
+}
+
+// ....
 
 export function dumpKont (kont : Kontinue) : string {
     switch (kont.type) {
@@ -94,32 +141,6 @@ export function dumpKont (kont : Kontinue) : string {
     default:
         return "WTF!";
     }
-}
-
-export function pprintKont (kont : Kontinue, depth : number) : string {
-    let kontStr = `${kont.type.padStart(11, ' ')} | ${depth.toString().padStart(3, ' ')} | ${kont.env.type == 'MENV' ? 'TOP' : 'LEX' } | ${(depth > 0 ? "-".repeat(depth) : "^")}`;
-    switch (kont.type) {
-    case 'EVAL'       : kontStr += ` ${pprint(kont.expr)}`;  break;
-    case 'EVAL_EXPR'  : kontStr += ` ${pprint(kont.expr)}`;  break;
-    case 'EVAL_HEAD'  : kontStr += ` ${pprint(kont.args)}`;  break;
-    case 'APPLY'      : kontStr += ` ${pprint(kont.call)}`;  break;
-    case 'RETURN'     : kontStr += ` ${pprint(kont.value)}`; break;
-    case 'DEFINE'     : kontStr += ` ${pprint(kont.name)}`;  break;
-    case 'EVAL_ARGS'  : kontStr += ` ${pprint(kont.args)} -> [${kont.done.map(pprint).join(' ')}]`; break;
-    case 'BLOCK'      : kontStr += ` ${kont.on == undefined ? '' : (kont.on.target == 'JOIN' ? pprint(kont.on.pid) : kont.on.target)}`; break;
-    case 'HALT'       : kontStr += ` ${kont.result == undefined ? '' : pprint(kont.result)}`; break;
-    case 'ERR'        : kontStr += ` ${pprint(kont.error)}`; break;
-    case 'FOLD/RIGHT' : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
-    case 'FOLD/LEFT'  : kontStr += ` ${pprint(kont.seq)} ${pprint(kont.acc)}`; break;
-    case 'DROP'       : break;
-    case 'COND'       : break;
-    case 'SCOPE_EXIT' : kontStr += ` ${pprint(kont.call)}`; break;
-    case 'SEND'       : break;
-    case 'DISCONNECT' : break;
-    case 'SYSCALL'    : break;
-    case 'YIELD'      : break;
-    }
-    return kontStr;
 }
 
 // Reconstruct an error trace by walking the kont chain: the innermost
