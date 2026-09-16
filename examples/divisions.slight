@@ -1,0 +1,72 @@
+
+(let screen-rows (- (tty/screen/rows) 10))
+(let screen-cols (- (tty/screen/cols) 1))
+
+(defun draw (x y h w color)
+    (tty/write \e "[u")
+    (do-times 0 h
+        (lambda (i)
+            (tty/write
+                \e "[" (+ x i) ";" y "H"
+                \e "[37;" color "m"
+                (str-repeat " " w)
+                \e "[0m")
+        )
+    )
+    (tty/write \e "[s")
+)
+
+(defun Keyboard (rows cols)
+    (let key (recv))
+    (case (car key)
+        ("1"
+            (tty/write \e "[1J")
+            (draw 1 1 rows cols 42)
+            (Keyboard rows cols))
+        ("2"
+            (tty/write \e "[1J")
+            (let mid (ceil (* cols 0.5)))
+            (draw 1 1         rows (- mid 1) 42)
+            (draw 1 (+ mid 2) rows mid 43)
+            (Keyboard rows cols))
+        ("3"
+            (tty/write \e "[1J")
+            (let mid-w (ceil (* cols 0.5)))
+            (let mid-h (ceil (* rows 0.5)))
+            (draw 1           1           rows  (- mid-w 1) 42)
+            (draw 1           (+ mid-w 2) (- mid-h 1) mid-w 43)
+            (draw (+ mid-h 1) (+ mid-w 2) mid-h mid-w 44)
+            (Keyboard rows cols))
+        ("4"
+            (tty/write \e "[1J")
+            (let mid-w (ceil (* cols 0.5)))
+            (let mid-h (ceil (* rows 0.5)))
+            (let qua-h (ceil (* mid-h 0.5)))
+            (draw 1                     1           rows  (- mid-w 1) 42)
+            (draw 1                     (+ mid-w 2) (- mid-h 1) mid-w 43)
+            (draw (+ mid-h 1)           (+ mid-w 2) (- qua-h 1) mid-w 44)
+            (draw (+ mid-h (+ qua-h 1)) (+ mid-w 2) (- qua-h 1) mid-w 45)
+            (Keyboard rows cols))
+        ("5"
+            (tty/write \e "[1J")
+            (let mid-w (ceil (* cols 0.5)))
+            (let mid-h (ceil (* rows 0.5)))
+            (let qua-h (ceil (* mid-h 0.5)))
+            (let qua-w (ceil (* mid-w 0.5)))
+            (draw 1                     1                     rows        (- mid-w 1) 42)
+            (draw 1                     (+ mid-w 2)           (- mid-h 1) mid-w       43)
+            (draw (+ mid-h 1)           (+ mid-w 2)           (- qua-h 1) mid-w       44)
+            (draw (+ mid-h (+ qua-h 1)) (+ mid-w 2)           (- qua-h 1) (- qua-w 2) 45)
+            (draw (+ mid-h (+ qua-h 1)) (+ mid-w (+ qua-w 2)) (- qua-h 1) qua-w       46)
+            (Keyboard rows cols))
+        ("q" ())
+        (#true (Keyboard rows cols))
+    )
+)
+
+
+(join (connect :keypress (Keyboard screen-rows screen-cols)))
+
+(tty/write "rows:" screen-rows)
+(tty/write "cols:" screen-cols)
+(tty/write \e "[" (+ screen-rows 5) ";0H")
