@@ -14,7 +14,7 @@
             (let from  (car   args))
             (let level (cadr  args))
             (let line  (caddr args))
-            (tty/write \e "[" (+ (coords :x) (+ (length logs) 2)) ";" (inc (coords :y)) "H")
+            (tty/write \e "[u" \e "[" (+ (coords :x) (+ (length logs) 2)) ";" (inc (coords :y)) "H")
             (tty/write
                 \e "[4"
                     (case level
@@ -24,7 +24,8 @@
                         (:ERROR 1)
                     ) "m▕"
                 \e "[32;47;4m" (pad-end line (dims :w) " ")
-                \e "[0m")
+                \e "[0m"
+                \e "[s")
 
             (yield (Logger dims coords (cons line logs)))
         )
@@ -79,41 +80,39 @@
     )
 )
 
+(defun Keyboard (window-manager logger)
+    (let key (recv))
+    (case (car key)
+        ("q"
+            (send window-manager (list :EXIT))
+            (send logger         (list :EXIT))
+            (join window-manager)
+            (join logger)
+        )
+        (#true
+            (Keyboard window-manager logger))
+    )
+)
+
 (tty/write \e "[1J")
 
-(let logger (fork (Logger (Dimensions 30 50) (Coords 1 87) ())))
+(let screen-rows (- (tty/screen/rows) 10))
+(let screen-cols (- (tty/screen/cols) 1))
+
+(let logger (fork (Logger (Dimensions screen-rows 50) (Coords 1 (- screen-cols 52)) ())))
 (send logger (list :log $$ :DEBUG "... Logger Initialized"))
 
-(let wm (fork (WindowManager 40 60 () logger)))
+(let wm (fork (WindowManager screen-rows screen-cols () logger)))
+(let kb (connect :keypress (Keyboard wm logger)))
+
 (send wm (list
     :newWindow
         "Window One"
-        (Dimensions 10 80)
+        (Dimensions 31 (- screen-cols 59))
         (Coords      1  1)))
 
-(send wm (list
-    :newWindow
-        "Window Two"
-        (Dimensions 10 80)
-        (Coords     12  1)))
+(join kb)
 
-(send wm (list
-    :newWindow
-        "Window Three"
-        (Dimensions 20 37)
-        (Coords     23  1)))
+(tty/write \e "[" (+ screen-rows 5) ";0H")
 
-(send wm (list
-    :newWindow
-        "Window Four"
-        (Dimensions 20 37)
-        (Coords     23 44)))
-
-(send wm (list :EXIT))
-(join wm)
-
-(send logger (list :EXIT))
-(join logger)
-
-(tty/write \e "[50;0H")
 

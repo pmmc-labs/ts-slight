@@ -168,6 +168,13 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     env = bind( sym('rand'), liftNumUnOp('rand', (n) => Math.floor(Math.random() * n)), env );
 
+    env = bind( sym('hex'), liftUnOp('hex', (s) => {
+        if (!isStr(s)) return raise(`TYPE-ERROR! - (hex) expected Str for the first arg, got (${s.type})`);
+        if (s.value.length == 0)  return raise(`TYPE-ERROR! - (hex) expected a non-empty Str (${s.value})`);
+        let value = parseInt(s.value, 16);
+        return num(value);
+    }), env );
+
     env = bind( sym('format-num'), liftListOp('format-num', (args) => {
         let [ n, w, c ] = uncons(args).map((e) => (e as LITERAL).value);
         if (n == undefined || w == undefined) return raise(`ARITY-ERROR: You must supply at least a number and a width`);
@@ -184,6 +191,22 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
     env = bind( sym('uc'),     liftStrUnOp('uc', (s) => s.toUpperCase()), env );
     env = bind( sym('lc'),     liftStrUnOp('lc', (s) => s.toLowerCase()), env );
     env = bind( sym('concat'), liftListOp('concat', (args) => str(uncons(args).map((arg) => isStr(arg) ? arg.value : pprint(arg)).join(''))), env );
+
+    env = bind( sym('str-join'), liftListOp('str-join', (args) => {
+        let [ sep, rest ] = uncons(args);
+        if (sep  === undefined || !isStr(sep)) return raise(`TYPE-ERROR! - (str-join) expected Str for the first arg, got (${sep?.type})`);
+        if (rest === undefined || !isCons(rest)) return raise(`TYPE-ERROR! - (str-join) expected Cons for the first arg, got (${rest?.type})`);
+        return str(uncons(rest).map((arg) => isStr(arg) ? arg.value : pprint(arg)).join(sep.value));
+    }), env );
+
+    env = bind( sym('substring'), liftListOp('substring', (args) : Str | ERROR => {
+        let [ s, start, end ] = uncons(args);
+        if (s     === undefined || !isStr(s))     return raise(`TYPE-ERROR! - (substring) expected Str for the first arg, got (${s?.type})`);
+        if (start === undefined || !isNum(start)) return raise(`TYPE-ERROR! - (substring) expected Num for the second arg, got (${start?.type})`);
+        if (end   === undefined || !isNum(end))   return raise(`TYPE-ERROR! - (substring) expected Num for the third arg, got (${end?.type})`);
+        if (s.value.length == 0) return str("");
+        return str(s.value.substring(start.value, end.value));
+    }), env );
 
     // XXX:
     // consider moving these (or subset of these) into a String extension
