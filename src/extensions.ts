@@ -34,6 +34,7 @@ export function Constants (env : MapEnv) : MapEnv {
 
     env = bind( sym("\\n"), str("\n"),   env );
     env = bind( sym("\\r"), str("\r"),   env );
+    env = bind( sym("\\t"), str("\t"),   env );
     env = bind( sym("\\e"), str("\x1b"), env );
 
     return env;

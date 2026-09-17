@@ -303,4 +303,98 @@
                         (lambda (i) (str-repeat pad-char width)))))))))
 
 
-(color-picker)
+;; -----------------------------------------------------------------------------
+;; REPL
+;; -----------------------------------------------------------------------------
+
+(defun REPL/Styles (info prompt input output)
+    (lambda (m content)
+        (case m
+            (:info   (info   content))
+            (:prompt (prompt content))
+            (:input  (input  content))
+            (:output (output content))
+            (#true
+                raise((~ "Unknown style type " m))))))
+
+(defun REPL/History (idx history)
+    (lambda (m)
+        ;(pprint (list :HISTORY m :idx idx :history history))
+        (case m
+            (:empty?  (nil? history))
+            (:current (nth idx history))
+            (:prev
+                ;(pprint (list :HISTORY :idx idx :length (length history) :history history))
+                (if (>= (inc idx) (length history))
+                    (REPL/History idx history)
+                    (REPL/History (inc idx) history)))
+            (:next
+                (if (< (dec idx) 0)
+                    (REPL/History idx history)
+                    (REPL/History (dec idx) history)))
+            (#true
+                (REPL/History 0 (cons m history)))
+            )))
+
+
+(defun REPL (styles data history)
+    (tty/write (clear-to-sol) \r (styles :prompt "> "))
+    (when (> (str-len data) 0)
+        (tty/write (styles :input data)))
+
+    (let key (recv))
+    (case (car key)
+        (:ArrowUp
+            (if (history :empty?)
+                (REPL styles data history)
+                (REPL styles (history :current) (history :prev))))
+        (:ArrowDown
+            (if (history :empty?)
+                (REPL styles data history)
+                (REPL styles (history :current) (history :next))))
+        (:Enter
+            (if (or (eq? data "q")
+                (or (eq? data ":q")
+                (or (eq? data "quit")
+                    (eq? data "(quit)"))))
+                (tty/write \n \n (styles :output "Goodbye!") \n)
+                (if (== (str-len data) 0)
+                    (REPL styles "" history)
+                    (do
+                        (let parsed (slight/parse data))
+                        (tty/write \n (styles :info (concat "╭" (str-repeat "─" 10) "╮")))
+                        (tty/write \n (styles :info "│  source  : ") (styles :output data))
+                        (tty/write \n (styles :info "│  parsed  : ") (styles :output (ast->str parsed)))
+                        (tty/write \n (styles :info "│  evaled  : ") (styles :output (ast->str (slight/eval-in-top-level parsed))))
+                        (tty/write \n (styles :info (concat "╰" (str-repeat "─" 10) "╯")))
+                        (tty/write \n)
+                        (REPL styles "" (history data))
+                    )
+                )
+            )
+        )
+        (:Backspace
+            (REPL styles (substring data 0 (dec (str-len data))) history))
+        (#true
+            (if (str? (car key))
+                (REPL styles (~ data (car key)) history)
+                (REPL styles data history))
+        )
+    )
+)
+
+(let styles (REPL/Styles
+    (Style :moonstoneBlue   :BLACK ())
+    (Style :persimmonOrange :BLACK (list :BOLD ))
+    (Style :urobilinYellow  :BLACK ())
+    (Style :acidGreen       :BLACK (list :ITALIC ))
+))
+
+(let history (REPL/History 0 ()))
+
+(join (connect :keypress (REPL styles "" history)))
+
+
+
+
+

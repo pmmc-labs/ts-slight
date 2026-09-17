@@ -380,6 +380,8 @@ export function initalizeEnv (core : MapEnv | undefined = undefined) : MapEnv {
 
     env = bind( sym('pprint'), liftUnOp('pprint', (t) => { LOG(pprint(t)); return NIL; }), env );
 
+    env = bind( sym('ast->str'), liftUnOp('ast->str', (t) => str(pprint(t))), env );
+
     let GENSYM_SEQ = 0;
     env = bind( sym('gensym'), liftNulOp('gensym', () => sym(`#:${++GENSYM_SEQ}`)), env );
 
