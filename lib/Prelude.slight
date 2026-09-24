@@ -7,9 +7,9 @@
 
 (defun apply (f args) (slight/eval (cons f args)))
 
-(defun do-times (start end f)
+(defun dotimes (start end f)
     (if (>= start end) ()
-        (do (f start) (do-times (+ start 1) end f))))
+        (do (f start) (dotimes (+ start 1) end f))))
 
 ;; -----------------------------------------------------------------------------
 ;; List functions

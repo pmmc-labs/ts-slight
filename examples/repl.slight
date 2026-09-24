@@ -299,7 +299,7 @@
                 (take height content)
                 (append
                     content
-                    (do-times 0 (- height (length content))
+                    (dotimes 0 (- height (length content))
                         (lambda (i) (str-repeat pad-char width)))))))))
 
 

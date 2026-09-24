@@ -1,0 +1,212 @@
+
+(quote
+
+;; core
+
+(and <lhs> <rhs>)
+(or  <lhs> <rhs>)
+(not <expr>)
+
+(do <*expr>)
+(dotimes <start> <end> <f>)
+
+(if   <cond> <if-true> <if-false>)
+(when <cond> <if-true>)
+(case <topic> (<to-match> <to-do>))
+(cond (<predicate> <action>))
+
+(raise <error>)
+(quote <*expr>)
+(gensym)
+
+(lambda <params> <body>)
+(let <name> <expr>)
+(defun <name> <params> <body>)
+
+(apply <f> <list>)
+
+;; processes
+
+$$
+(yield <expr>)
+(fork <expr>)
+(join <pid>)
+(kill <pid>)
+
+(connect <source> <pid>)
+(disconnect <pid>)
+
+(send <pid> <expr>)
+(recv)
+
+;; syscalls
+
+(syscall <label> <expr>)
+
+(sleep <ms>)
+(localtime)
+(slurp <path>)
+(spew <path> <data>)
+
+;; interpreter
+
+(slight/parse <source>)
+(slight/eval <expr>)
+(slight/eval-in-top-level)
+
+;; operators
+
+(==  <lhs> <rhs>)
+(!=  <lhs> <rhs>)
+(<=  <lhs> <rhs>)
+(<   <lhs> <rhs>)
+(>=  <lhs> <rhs>)
+(>   <lhs> <rhs>)
+(eq? <lhs> <rhs>)
+(ne? <lhs> <rhs>)
+
+;; predicates
+
+(true? <expr>)
+(false? <expr>)
+
+(nil?       <expr>)
+(cons?      <expr>)
+(sym?       <expr>)
+(str?       <expr>)
+(num?       <expr>)
+(bool?      <expr>)
+(lambda?    <expr>)
+(builtin?   <expr>)
+(list?      <expr>)
+(atom?      <expr>)
+(literal?   <expr>)
+(callable?  <expr>)
+(type-of    <expr>)
+
+;; list constructors
+
+(cons   <first> <rest>)
+(list   <*expr>)
+(range  <start> <end> <step>)
+
+;; list accessors
+
+(car    <list>)
+(cdr    <list>)
+(cadr   <list>)
+(cddr   <list>)
+(caddr  <list>)
+(cadddr <list>)
+(cddddr <list>)
+
+;; iteration
+
+(fold/l <acc> <f> <list>)
+(fold/r <acc> <f> <list>)
+
+;; Lists
+
+(length      <list>)
+(reverse     <list>)
+(append      <expr> <list>)
+(concat-list <list> <list>)
+(sum         <list>)
+(product     <list>)
+(map         <f> <list>)
+(grep        <f> <list>)
+(filter      <f> <list>)
+(skip        <n> <list>)
+(take        <n> <list>)
+(nth         <n> <list>)
+(find        <f> <list>)
+(member?     <expr> <list>)
+
+;; Association lists
+
+(assoc  <name> <expr>)
+(lookup <expr> <table>)
+
+;; Numbers
+
+PI
+(+  <lhs> <rhs>)
+(-  <lhs> <rhs>)
+(*  <lhs> <rhs>)
+(/  <lhs> <rhs>)
+(%  <lhs> <rhs>)
+(inc <expr>)
+(dec <expr>)
+(max <lhs> <rhs>)
+(min <lhs> <rhs>)
+(pow   <expr>)
+(abs   <expr>)
+(cos   <expr>)
+(sin   <expr>)
+(exp   <expr>)
+(tan   <expr>)
+(ceil  <expr>)
+(sqrt  <expr>)
+(floor <expr>)
+(round <expr>)
+(trunc <expr>)
+(hex   <str>)
+(rand)
+(format-num <n> <width> <char>)
+
+;; Strings
+
+\n
+\r
+\t
+\e
+
+(~ <lhs> <rhs>)
+(uc <expr>)
+(lc <expr>)
+(substring <expr> <start> <end>)
+(concat <*expr>)
+
+(index-of      <str> <to-match>)
+(last-index-of <str> <to-match>)
+(starts-with   <str> <to-match>)
+(ends-with     <str> <to-match>)
+(pad-end       <str> <length> <char>)
+(pad-start     <str> <length> <char>)
+
+(str-repeat    <str> <n>)
+(str-split     <str> <to-match>)
+(str-len       <str>)
+
+(str-join      <sep> <*str>)
+
+(str-split-at  <str> <i> <char>)
+(str-splice-at <str> <i>)
+
+;; TTY
+
+(tty/screen/rows)
+(tty/screen/cols)
+(tty/write <*exprs>)
+
+;; Benchmarking
+
+(time-it <label>)
+(time-it/end <label>)
+
+;; To Fix
+
+(ast->str <expr>)
+(pprint <expr>)
+
+;; To deprecate
+
+(sys/io/print-ln)
+(poke)
+(ansi/hide-cursor)
+(ansi/show-cursor)
+(head)
+(tail)
+
+)
+

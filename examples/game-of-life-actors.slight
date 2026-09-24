@@ -137,7 +137,7 @@
 
 (yield (controller h w grid :INIT))
 (ansi/hide-cursor)
-(do-times 0 1000 (lambda (i)
+(dotimes 0 1000 (lambda (i)
     (yield (controller h w grid :TICK))
     (sleep 300)
 ))

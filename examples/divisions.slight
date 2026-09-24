@@ -4,7 +4,7 @@
 
 (defun draw (x y h w color)
     (tty/write \e "[u")
-    (do-times 0 h
+    (dotimes 0 h
         (lambda (i)
             (tty/write
                 \e "[" (+ x i) ";" y "H"
